@@ -60,7 +60,7 @@ TRANSIENT_KEYWORDS = [
 def detect_transient_ui(ui_elements) -> bool:
     """Detect if current UI contains a transient (ephemeral) dialog."""
     for e in ui_elements:
-        if e.package and e.package in SYSTEM_PACKAGES:
+        if getattr(e, "package_name", None) and e.package_name in SYSTEM_PACKAGES:
             return True
         if e.text and any(
             re.search(kw, e.text, re.IGNORECASE) for kw in TRANSIENT_KEYWORDS
@@ -75,11 +75,11 @@ def get_fast_path_action(ui_elements) -> dict | None:
     dismiss_buttons = {"CANCEL", "DENY", "DISMISS", "NOT NOW", "LATER"}
 
     for text_set in [priority_buttons, dismiss_buttons]:
-        for e in ui_elements:
-            if not e.clickable:
+        for i, e in enumerate(ui_elements):
+            if not getattr(e, "is_clickable", None):
                 continue
             if e.text and e.text.upper() in text_set:
-                return {"action_type": "click", "index": e.index}
+                return {"action_type": "click", "index": i}
 
     # Fallback: go back
     return {"action_type": "navigate_back"}
