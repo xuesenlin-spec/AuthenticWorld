@@ -14,6 +14,8 @@
 
 """T3A: Text-only Autonomous Agent for Android."""
 
+import time
+
 from android_world.agents import agent_utils
 from android_world.agents import base_agent
 from android_world.agents import infer
@@ -311,9 +313,17 @@ class T3A(base_agent.EnvironmentInteractingAgent):
         'summary': None,
         'summary_raw_response': None,
     }
-    print('----------step ' + str(len(self.history) + 1))
+    step_num = len(self.history) + 1
+    _step_start = time.time()
+    if self._task_name:
+      print(f'----------step {step_num}/{self._max_steps or "?"} '
+            f'(Task: {self._task_name} [{self._task_count}/{self._total_tasks}])')
+    else:
+      print(f'----------step {step_num}')
 
+    _t = time.time()
     state = self.get_post_transition_state()
+    print(f'[TIMING] get_post_transition_state (before LLM): {time.time()-_t:.2f}s')
     logical_screen_size = self.env.logical_screen_size
 
     ui_elements = state.ui_elements
@@ -335,9 +345,11 @@ class T3A(base_agent.EnvironmentInteractingAgent):
         self.additional_guidelines,
     )
     step_data['action_prompt'] = action_prompt
+    _t = time.time()
     action_output, is_safe, raw_response = self.llm.predict(
         action_prompt,
     )
+    print(f'[TIMING] LLM action selection: {time.time()-_t:.2f}s')
 
     if is_safe == False:  # pylint: disable=singleton-comparison
       #  is_safe could be None
@@ -424,7 +436,9 @@ Action: {{"action_type": "status", "goal_status": "infeasible"}}"""
       print('Agent answered with: ' + converted_action.text)
 
     try:
+      _t = time.time()
       self.env.execute_action(converted_action)
+      print(f'[TIMING] execute_action: {time.time()-_t:.2f}s')
     except Exception as e:  # pylint: disable=broad-exception-caught
       print(
           'Some error happened executing the action ',
@@ -442,7 +456,9 @@ Action: {{"action_type": "status", "goal_status": "infeasible"}}"""
           step_data,
       )
 
+    _t = time.time()
     state = self.get_post_transition_state()
+    print(f'[TIMING] get_post_transition_state (after action): {time.time()-_t:.2f}s')
     ui_elements = state.ui_elements
 
     after_element_list = _generate_ui_elements_description_list_full(
@@ -454,29 +470,15 @@ Action: {{"action_type": "status", "goal_status": "infeasible"}}"""
     step_data['after_screenshot'] = state.pixels.copy()
     step_data['after_element_list'] = ui_elements
 
-    summary_prompt = _summarize_prompt(
-        goal,
-        action,
-        reason,
-        before_element_list,
-        after_element_list,
-    )
-
-    summary, is_safe, raw_response = self.llm.predict(
-        summary_prompt,
-    )
-    if is_safe == False:  # pylint: disable=singleton-comparison
-      #  is_safe could be None
-      summary = """Summary triggered LLM safety classifier."""
-
-    step_data['summary_prompt'] = summary_prompt
-    step_data['summary'] = (
-        f'Action selected: {action}. {summary}'
-        if raw_response
-        else 'Error calling LLM in summerization phase.'
-    )
+    # Use rule-based summary instead of LLM call to save one API call per step.
+    summary = f'Action: {action}. Reason: {reason}'
+    step_data['summary_prompt'] = None
+    step_data['summary'] = summary
+    step_data['summary_raw_response'] = None
     print('Summary: ' + summary)
-    step_data['summary_raw_response'] = raw_response
+
+    print(f'[TIMING] STEP {step_num} TOTAL: {time.time()-_step_start:.2f}s')
+    print('---')
 
     self.history.append(step_data)
 

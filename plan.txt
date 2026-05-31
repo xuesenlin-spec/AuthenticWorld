@@ -1,0 +1,196 @@
+# AndroidWorld 长程跨 App 任务扩展方案（v2 - 真实场景版）
+
+共 20 个任务，分为 4 类，每类 5 个。
+所有任务要求 50+ 步，跨 3+ 应用。
+设计原则：每个任务对应一个普通用户的真实生活/工作场景。
+
+---
+
+## 第一类：跨 App 信息流转
+
+核心模式：用户在 A app 中产生信息，需要用到 B、C app 中完成后续操作。
+
+### Task 1: BusinessTripPlanning（出差行程规划）
+**真实场景**: 用户要出差去一个城市，需要在日历安排行程、在地图标记目的地、在笔记整理行程单、通知同事
+**Goal**:
+"你即将前往 {city} 出差。完成以下所有事情：1) 在 Simple Calendar Pro 中为 {start_date} 到 {end_date} 创建日程，标题为 'Business Trip - {city}'。2) 在 OsmAnd 中找到 {city} 的市中心位置并标记为收藏，备注为 '出差目的地'。3) 在 Markor 中创建名为 trip_{city}.txt 的笔记，内容包括：出差日期、目的地位置信息。4) 通过 Simple SMS Messenger 将行程信息发送给同事 {phone}，内容包含出发日期和目的地。"
+**App 涉及**: Simple Calendar Pro → OsmAnd → Markor → Simple SMS Messenger
+**复杂度**: 6.0（60 步）
+
+### Task 2: ExpenseReimbursement（报销流程）
+**真实场景**: 用户出差回来后需要整理费用并报销，从笔记中读取费用明细录入报销系统，再通知财务
+**Goal**:
+"出差回来了，需要报销费用。完成以下所有事情：1) 在 Markor 中创建名为 reimbursement_{month}.txt 的笔记，列出 3 笔费用：酒店 {hotel_cost} 美元，餐饮 {food_cost} 美元，交通 {transport_cost} 美元。2) 在 Pro Expense 中逐条录入这 3 笔费用，描述分别为 'Hotel'、'Meals'、'Transport'。3) 在 Simple Calendar Pro 中为 {date} 创建一个事件 'Submit Reimbursement'。4) 通过 Simple SMS Messenger 将报销总额发送到财务 {phone}，内容为 'Total reimbursement: {total} USD'。"
+**App 涉及**: Markor → Pro Expense → Simple Calendar Pro → Simple SMS Messenger
+**复杂度**: 5.5（55 步）
+
+### Task 3: PartyPlanning（聚会筹备）
+**真实场景**: 用户要办生日聚会，需要安排时间、记录来宾名单和菜单、通知朋友、记录预算
+**Goal**:
+"你计划举办一个生日聚会。完成以下所有事情：1) 在 Simple Calendar Pro 中为 {date} {time} 创建一个事件 'Birthday Party'。2) 在 Simple Contacts Pro 中添加 {n} 个来宾作为联系人，姓名分别为 {names}，电话为 {phones}。3) 在 Markor 中创建名为 party_{date}.txt 的笔记，列出所有来宾姓名和聚会的购物清单（蛋糕、饮料、零食等）。4) 通过 Simple SMS Messenger 向每位来宾发送邀请短信，内容为 'Hi {name}, you are invited to my birthday party on {date} at {time}!'。"
+**App 涉及**: Simple Calendar Pro → Simple Contacts Pro → Markor → Simple SMS Messenger
+**复杂度**: 7.0（70 步）
+
+### Task 4: MedicalAppointmentWorkflow（就医流程）
+**真实场景**: 用户需要预约医生就诊，记录症状、安排时间、通知家人
+**Goal**:
+"你感觉不舒服，需要去看医生。完成以下所有事情：1) 在 Markor 中创建名为 medical_symptoms.txt 的笔记，记录以下症状：{symptom1}、{symptom2}、{symptom3}，并注明持续时间。2) 在 Simple Calendar Pro 中为 {date} {time} 创建一个事件 'Doctor Appointment - {clinic_name}'。3) 在 Simple Contacts Pro 中添加一个联系人 'Dr. {doctor_name}'，电话为 {clinic_phone}。4) 通过 Simple SMS Messenger 通知家人 {phone}，内容为 'I have a doctor appointment on {date} at {time} at {clinic_name}'。"
+**App 涉及**: Markor → Simple Calendar Pro → Simple Contacts Pro → Simple SMS Messenger
+**复杂度**: 5.5（55 步）
+
+### Task 5: PhotoMemorySharing（照片回忆分享）
+**真实场景**: 用户旅行回来后整理照片，记录旅行日记，分享给家人朋友
+**Goal**:
+"你刚旅行回来，整理旅行回忆。完成以下所有事情：1) 在 Simple Gallery Pro 中查看 /storage/emulated/0/DCIM/{trip_folder} 中的照片。2) 在 Markor 中创建名为 trip_diary_{destination}.txt 的笔记，记录这次旅行去过的地方（至少 3 个景点名称）和最喜欢的照片名称。3) 在 Simple Calendar Pro 中为旅行结束日期 {end_date} 创建一个事件 'Trip to {destination} Ended'，描述中列出所有去过的景点。4) 通过 Simple SMS Messenger 将旅行日记内容发送给家人 {phone}。"
+**App 涉及**: Simple Gallery Pro → Markor → Simple Calendar Pro → Simple SMS Messenger
+**复杂度**: 6.0（60 步）
+
+---
+
+## 第二类：条件决策 + 错误处理
+
+核心模式：用户根据当前状态做出判断，遇到异常情况要自行处理。
+
+### Task 6: NetworkTroubleshooting（网络故障排查）
+**真实场景**: 用户发现手机网络有问题，需要检查并修复 WiFi/蓝牙状态，记录排查过程
+**Goal**:
+"你的手机网络连接似乎有问题。完成以下所有事情：1) 检查 WiFi 状态，如果 WiFi 已关闭则打开它。2) 检查蓝牙状态，如果蓝牙已打开则关闭它（因为蓝牙可能干扰 WiFi）。3) 在 Markor 中创建名为 network_troubleshoot.txt 的笔记，记录你发现的状态和你采取的操作。4) 通过 Simple SMS Messenger 发送排查结果给朋友 {phone}，告诉他 'WiFi is now {wifi_status}, Bluetooth is now {bt_status}'。5) 在 Simple Calendar Pro 中创建一个提醒事件 'Check internet speed'。"
+**App 涉及**: 系统设置 → Markor → Simple SMS Messenger → Simple Calendar Pro
+**复杂度**: 5.5（55 步）
+
+### Task 7: CalendarConflictResolution（日历冲突处理）
+**真实场景**: 用户发现日历上有时间冲突的事件，需要检查并重新安排
+**Goal**:
+"你需要整理今天的日程安排。完成以下所有事情：1) 检查 Simple Calendar Pro 中 {date} 的事件。2) 如果当天已有事件，则删除所有事件并重新创建一个新的合并事件，标题为 'Consolidated Schedule'，包含原有事件的标题作为描述。如果当天没有事件，则创建 2 个事件：上午 10 点的 'Team Meeting' 和下午 3 点的 'Client Call'。3) 在 Markor 中创建名为 schedule_{date}.txt 的笔记，记录最终保留的日程安排。4) 通过 Simple SMS Messenger 将最终日程发送给同事 {phone}。"
+**App 涉及**: Simple Calendar Pro → Markor → Simple SMS Messenger
+**复杂度**: 5.5（55 步）
+
+### Task 8: StorageSpaceManagement（存储空间管理）
+**真实场景**: 用户收到存储空间不足的提示，需要检查并清理文件，记录清理结果
+**Goal**:
+"手机提示存储空间不足。完成以下所有事情：1) 在 Markor 中检查现有的笔记，如果笔记数量超过 {max_notes} 个，则删除最旧的 {delete_count} 条笔记。2) 在 Simple Gallery Pro 中查看照片数量，如果超过 {max_photos} 张，则在笔记中记录需要清理。3) 在 Markor 中创建名为 storage_cleanup.txt 的笔记，记录清理前后的笔记数量。4) 通过 Simple SMS Messenger 发送清理报告给家人 {phone}，内容为 'Cleaned up {count} old notes, now have {remaining} notes'。"
+**App 涉及**: Markor → Simple Gallery Pro → Simple SMS Messenger
+**复杂度**: 5.5（55 步）
+
+### Task 9: MissedCallFollowUp（未接来电跟进）
+**真实场景**: 用户发现有未接来电，需要判断是否需要回拨，并记录跟进情况
+**Goal**:
+"你发现有一个未接来电。完成以下所有事情：1) 检查 Phone 应用中的通话记录。如果有未接来电，查看来电号码。2) 在 Simple Contacts Pro 中搜索该号码是否已存在联系人。如果存在，记录联系人姓名；如果不存在，添加为联系人 'Unknown Caller'。3) 通过 Simple SMS Messenger 向该号码发送短信：'Sorry I missed your call. Please let me know what you need.' 4) 在 Markor 中创建名为 missed_call_log.txt 的笔记，记录来电号码、时间和你采取的操作。"
+**App 涉及**: Phone → Simple Contacts Pro → Simple SMS Messenger → Markor
+**复杂度**: 5.5（55 步）
+
+### Task 10: BudgetCheckBeforePurchase（购物前预算检查）
+**真实场景**: 用户想买一些东西，需要先检查现有支出是否超预算，再决定是否购买
+**Goal**:
+"你想买一些新东西，但需要先检查预算。完成以下所有事情：1) 在 Pro Expense 中查看现有的所有支出条目，计算总支出。2) 如果总支出超过 {budget_limit} 美元，在 Markor 中创建名为 budget_warning.txt 的笔记，内容为 'Budget exceeded! Current: {current}, Limit: {budget_limit}'。如果未超过，创建 3 笔新费用条目代表购物：{item1} {price1} 美元，{item2} {price2} 美元，{item3} {price3} 美元，并在笔记中记录 'Shopping approved, total new expense: {total}'。3) 在 Simple Calendar Pro 中创建一个提醒事件 'Review monthly budget'。4) 通过 Simple SMS Messenger 将预算状态发送给伴侣 {phone}。"
+**App 涉及**: Pro Expense → Markor → Simple Calendar Pro → Simple SMS Messenger
+**复杂度**: 6.5（65 步）
+
+---
+
+## 第三类：多子目标
+
+核心模式：一个生活/工作目标需要同时使用多个 app 才能完成。
+
+### Task 11: NewJobOnboarding（新工作入职）
+**真实场景**: 用户入职新公司，需要设置工作相关的各项信息
+**Goal**:
+"你刚入职新公司，需要完成以下所有设置：1) 在 Simple Contacts Pro 中添加公司 HR 的联系方式：姓名 {hr_name}，电话 {hr_phone}，邮箱 {hr_email}。2) 在 Simple Calendar Pro 中为本周添加工作日事件，标题为 'Work Day'，从 {start_time} 到 {end_time}，每天一个。3) 在 Markor 中创建名为 work_info.txt 的笔记，记录 HR 联系方式和工作时间安排。4) 通过 Simple SMS Messenger 向 HR 发送确认短信：'Hi {hr_name}, this is {your_name}. I have completed my onboarding setup. Thanks!'。"
+**App 涉及**: Simple Contacts Pro → Simple Calendar Pro → Markor → Simple SMS Messenger
+**复杂度**: 6.5（65 步）
+
+### Task 12: WeeklyMealPrep（每周备餐）
+**真实场景**: 用户每周日会规划下一周的饮食，记录菜单、采购清单和费用
+**Goal**:
+"今天是周日，你需要规划下周的饮食。完成以下所有事情：1) 在 Markor 中创建名为 weekly_meal_plan_{week}.txt 的笔记，列出周一到周五每天午餐和晚餐的菜单（共 10 道菜）。2) 在 Pro Expense 中为这周的食材采购添加一笔费用，金额为 {grocery_cost} 美元，描述为 'Weekly Grocery'。3) 在 Simple Calendar Pro 中为每天的午餐时间 12:00 和晚餐时间 18:00 创建事件，标题为对应的菜名。4) 通过 Simple SMS Messenger 将本周菜单发送给家人 {phone}。"
+**App 涉及**: Markor → Pro Expense → Simple Calendar Pro → Simple SMS Messenger
+**复杂度**: 7.0（70 步）
+
+### Task 13: HomeRenovationProject（家庭装修项目）
+**真实场景**: 用户在进行家庭装修，需要跟踪进度、记录费用、安排工期、通知家人
+**Goal**:
+"你正在进行家庭装修。完成以下所有事情：1) 在 Markor 中创建名为 home_renovation.txt 的笔记，列出需要完成的任务清单：刷墙、换地板、修水管等。2) 在 Simple Calendar Pro 中为每个任务创建一个事件，分别为 {date1} 'Painting'，{date2} 'Flooring'，{date3} 'Plumbing'。3) 在 Pro Expense 中为每项任务添加费用：{paint_cost} 美元（Painting），{floor_cost} 美元（Flooring），{plumb_cost} 美元（Plumbing）。4) 在 Simple Contacts Pro 中添加装修工人联系方式：姓名 {worker_name}，电话 {worker_phone}。5) 通过 Simple SMS Messenger 将装修进度和预算发给家人 {phone}。"
+**App 涉及**: Markor → Simple Calendar Pro → Pro Expense → Simple Contacts Pro → Simple SMS Messenger
+**复杂度**: 7.5（75 步）
+
+### Task 14: StudentExamPrep（学生考试复习）
+**真实场景**: 学生准备考试，需要安排复习计划、记录重点、设置提醒、通知同学
+**Goal**:
+"你下周有考试，需要准备复习计划。完成以下所有事情：1) 在 Simple Calendar Pro 中为复习安排日程，从 {start_date} 到 {exam_date} 每天创建一个事件 'Study {subject}'，时间为下午 2 点。2) 在 Markor 中创建名为 study_notes_{subject}.txt 的笔记，列出需要复习的重点内容（至少 5 个知识点）。3) 在 Simple Contacts Pro 中添加学习小组同学的联系方式：{classmate1} {phone1}，{classmate2} {phone2}。4) 通过 Simple SMS Messenger 向每位同学发送消息：'Hi, let's study together for the {subject} exam on {exam_date}!'。"
+**App 涉及**: Simple Calendar Pro → Markor → Simple Contacts Pro → Simple SMS Messenger
+**复杂度**: 6.5（65 步）
+
+### Task 15: FitnessGoalTracking（健身目标跟踪）
+**真实场景**: 用户开始新的健身计划，需要记录目标、安排锻炼时间、跟踪费用、通知教练
+**Goal**:
+"你开始了一个新的健身计划。完成以下所有事情：1) 在 Markor 中创建名为 fitness_plan.txt 的笔记，记录健身目标（减重/增肌）、每周锻炼计划（周一到周五各项目的名称和时间）。2) 在 Simple Calendar Pro 中为每天的锻炼创建事件，标题为对应的运动名称。3) 在 Pro Expense 中添加健身房会员费用 {gym_cost} 美元，描述为 'Gym Membership'。4) 在 Simple Contacts Pro 中添加健身教练联系方式：{coach_name} {coach_phone}。5) 通过 Simple SMS Messenger 向教练发送消息：'Hi {coach_name}, I just started my fitness plan. Looking forward to our sessions!'"
+**App 涉及**: Markor → Simple Calendar Pro → Pro Expense → Simple Contacts Pro → Simple SMS Messenger
+**复杂度**: 7.0（70 步）
+
+---
+
+## 第四类：长程交互 + 异常处理
+
+核心模式：在长时间操作过程中需要应对弹窗、权限请求、状态变化等异常。
+
+### Task 16: TravelItineraryManagement（旅行行程管理）
+**长程场景**: 用户管理一次完整旅行，涉及多日程安排、多联系人、费用记录，需要处理权限弹窗、日期冲突等
+**Goal**:
+"你计划了一次为期 3 天的旅行。完成以下所有事情：1) 在 Simple Calendar Pro 中为 {date1}、{date2}、{date3} 各创建一个全天事件，标题分别为 'Day 1: {city1}'、'Day 2: {city2}'、'Day 3: {city3}'。2) 在 OsmAnd 中为每个城市标记一个收藏位置。3) 在 Markor 中创建名为 travel_{destination}.txt 的笔记，记录每天的行程安排、每个城市的收藏位置名称。4) 在 Simple Contacts Pro 中添加旅行同伴的联系方式。5) 通过 Simple SMS Messenger 将完整行程发送给旅行同伴 {phone}。6) 在 Pro Expense 中添加旅行预算费用 {budget} 美元。"
+**App 涉及**: Simple Calendar Pro → OsmAnd → Markor → Simple Contacts Pro → Simple SMS Messenger → Pro Expense
+**复杂度**: 7.5（75 步）
+
+### Task 17: EventPlanningAndCoordination（活动策划协调）
+**长程场景**: 用户策划一个社区活动，需要管理参与者、预算、日程、通知，处理大量重复操作
+**Goal**:
+"你在策划一个社区活动。完成以下所有事情：1) 在 Simple Calendar Pro 中为 {event_date} 创建活动 'Community Event'。2) 在 Simple Contacts Pro 中添加 {n} 个参与者的联系方式，每个包含姓名和电话。3) 向每位参与者发送 SMS 邀请，内容为 'You are invited to our Community Event on {event_date}!'。4) 在 Markor 中创建名为 event_planning.txt 的笔记，列出所有参与者名单和活动流程安排。5) 在 Pro Expense 中为活动添加预算条目：场地 {venue_cost} 美元，餐饮 {catering_cost} 美元，装饰 {decor_cost} 美元。"
+**App 涉及**: Simple Calendar Pro → Simple Contacts Pro → Simple SMS Messenger → Markor → Pro Expense
+**复杂度**: 8.0（80 步）
+
+### Task 18: ProjectKickoffAndTeamSetup（项目启动和团队设置）
+**长程场景**: 用户开始一个新项目，需要添加所有团队成员联系方式、创建项目日程、整理项目文档、通知所有人
+**Goal**:
+"你开始负责一个新项目。完成以下所有事情：1) 在 Simple Calendar Pro 中创建项目相关的日程：项目启动会议 {kickoff_date}、每周进度检查（每周一 {time}）、项目截止日期 {deadline_date}。2) 在 Simple Contacts Pro 中添加项目团队成员 {n} 人，每个包含姓名、电话、邮箱。3) 向每位成员发送 SMS：'Welcome to the project! First meeting on {kickoff_date}.'。4) 在 Markor 中创建名为 project_{name}.txt 的笔记，记录项目目标、团队成员名单、重要日期。5) 在 Pro Expense 中添加项目预算 {budget} 美元。"
+**App 涉及**: Simple Calendar Pro → Simple Contacts Pro → Simple SMS Messenger → Markor → Pro Expense
+**复杂度**: 8.0（80 步）
+
+### Task 19: FamilyHealthRecordSetup（家庭健康档案建立）
+**长程场景**: 用户为全家建立健康档案，记录每个家庭成员的体检信息、预约、费用，处理大量信息输入
+**Goal**:
+"你在为全家整理健康档案。完成以下所有事情：1) 在 Simple Contacts Pro 中添加家庭成员的联系方式：配偶 {spouse_name} {spouse_phone}、孩子 {child_name} {child_phone}、家庭医生 {doctor_name} {doctor_phone}。2) 在 Markor 中创建名为 family_health.txt 的笔记，记录每个家庭成员的健康信息（血型、过敏史、常用药物等）。3) 在 Simple Calendar Pro 中为每个家庭成员创建体检预约事件：{date1} '{name1} Checkup'，{date2} '{name2} Checkup'，{date3} '{name3} Checkup'。4) 在 Pro Expense 中添加医疗费用：{cost1} 美元（{name1}），{cost2} 美元（{name2}），{cost3} 美元（{name3}）。5) 通过 Simple SMS Messenger 向配偶发送健康档案摘要。"
+**App 涉及**: Simple Contacts Pro → Markor → Simple Calendar Pro → Pro Expense → Simple SMS Messenger
+**复杂度**: 8.5（85 步）
+
+### Task 20: SmallBusinessDailyOperations（小店日常运营）
+**长程场景**: 用户经营一家小店，每天需要记录销售、安排工作、联系客户、记账，涉及大量重复操作和状态检查
+**Goal**:
+"你经营一家小店，需要完成今天的运营工作。完成以下所有事情：1) 在 Markor 中创建名为 daily_sales_{date}.txt 的笔记，记录今天售出的 5 件商品：{item1} {price1} 美元，{item2} {price2} 美元，...，以及今天的总收入。2) 在 Pro Expense 中录入今天的支出：进货 {supply_cost} 美元，水电 {utility_cost} 美元。3) 在 Simple Calendar Pro 中为明天创建工作计划事件：上午 9 点 'Open Shop'，下午 2 点 'Inventory Check'，下午 6 点 'Close Shop'。4) 在 Simple Contacts Pro 中添加 3 个新客户的联系方式。5) 向每位客户发送 SMS：'Hi {name}, thanks for visiting our shop today! We look forward to seeing you again.'。6) 将今天的销售和支出汇总通过 SMS 发送给合伙人 {partner_phone}。"
+**App 涉及**: Markor → Pro Expense → Simple Calendar Pro → Simple Contacts Pro → Simple SMS Messenger
+**复杂度**: 9.0（90 步）
+
+---
+
+## 汇总
+
+| 类别 | 任务编号 | 任务名 | 场景 | 涉及应用数 | 复杂度 |
+|------|----------|--------|------|-----------|--------|
+| 跨App信息流转 | 1 | BusinessTripPlanning | 出差行程规划 | 4 | 6.0 |
+| 跨App信息流转 | 2 | ExpenseReimbursement | 报销流程 | 4 | 5.5 |
+| 跨App信息流转 | 3 | PartyPlanning | 聚会筹备 | 4 | 7.0 |
+| 跨App信息流转 | 4 | MedicalAppointmentWorkflow | 就医流程 | 4 | 5.5 |
+| 跨App信息流转 | 5 | PhotoMemorySharing | 照片回忆分享 | 4 | 6.0 |
+| 条件决策+错误处理 | 6 | NetworkTroubleshooting | 网络故障排查 | 4 | 5.5 |
+| 条件决策+错误处理 | 7 | CalendarConflictResolution | 日历冲突处理 | 3 | 5.5 |
+| 条件决策+错误处理 | 8 | StorageSpaceManagement | 存储空间管理 | 3 | 5.5 |
+| 条件决策+错误处理 | 9 | MissedCallFollowUp | 未接来电跟进 | 4 | 5.5 |
+| 条件决策+错误处理 | 10 | BudgetCheckBeforePurchase | 购物前预算检查 | 4 | 6.5 |
+| 多子目标 | 11 | NewJobOnboarding | 新工作入职 | 4 | 6.5 |
+| 多子目标 | 12 | WeeklyMealPrep | 每周备餐 | 4 | 7.0 |
+| 多子目标 | 13 | HomeRenovationProject | 家庭装修 | 5 | 7.5 |
+| 多子目标 | 14 | StudentExamPrep | 学生考试复习 | 4 | 6.5 |
+| 多子目标 | 15 | FitnessGoalTracking | 健身目标跟踪 | 5 | 7.0 |
+| 长程交互+异常处理 | 16 | TravelItineraryManagement | 旅行行程管理 | 6 | 7.5 |
+| 长程交互+异常处理 | 17 | EventPlanningAndCoordination | 活动策划协调 | 5 | 8.0 |
+| 长程交互+异常处理 | 18 | ProjectKickoffAndTeamSetup | 项目启动 | 5 | 8.0 |
+| 长程交互+异常处理 | 19 | FamilyHealthRecordSetup | 家庭健康档案 | 5 | 8.5 |
+| 长程交互+异常处理 | 20 | SmallBusinessDailyOperations | 小店日常运营 | 5 | 9.0 |

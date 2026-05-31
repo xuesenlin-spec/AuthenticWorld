@@ -83,26 +83,27 @@ def execute_adb_action(
         execute_adb_action(click_action, screen_elements, screen_size, env)
         time.sleep(1.0)
 
-      if action.clear_text:
-        # Select all existing text and delete it.
-        adb_utils.issue_generic_request(
-            [
-                'shell',
-                'input',
-                'keycombination',
-                '113',
-                '29',
-                '&&',
-                'input',
-                'keyevent',
-                '67',
-            ],
-            env,
-        )
-        time.sleep(1.0)
+      # Always clear existing text when typing into a specific element,
+      # since most input fields have pre-populated content (placeholders,
+      # defaults, etc.) and we want to replace, not append.
+      # Select all existing text and delete it.
+      adb_utils.issue_generic_request(
+          [
+              'shell',
+              'input',
+              'keycombination',
+              '113',
+              '29',
+              '&&',
+              'input',
+              'keyevent',
+              '67',
+          ],
+          env,
+      )
+      time.sleep(0.5)
 
-      adb_utils.type_text(text, env, timeout_sec=10)
-      adb_utils.press_enter_button(env)
+      adb_utils.type_text(text, env, timeout_sec=30)
     else:
       logging.warning(
           'Input_text action indicated, but no text provided. No '

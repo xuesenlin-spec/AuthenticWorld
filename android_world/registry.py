@@ -18,7 +18,9 @@ import types
 from typing import Any, Final
 
 from android_world.task_evals import task_eval
+from android_world.task_evals.composite import calendar_sms_markor
 from android_world.task_evals.composite import markor_sms
+from android_world.task_evals.composite import pega
 from android_world.task_evals.composite import system as system_composite
 from android_world.task_evals.information_retrieval import information_retrieval
 from android_world.task_evals.information_retrieval import information_retrieval_registry
@@ -53,6 +55,7 @@ def get_families() -> list[str]:
       TaskRegistry.MINIWOB_FAMILY,
       TaskRegistry.MINIWOB_FAMILY_SUBSET,
       TaskRegistry.INFORMATION_RETRIEVAL_FAMILY,
+      TaskRegistry.PEGA_FAMILY,
   ]
 
 
@@ -68,6 +71,9 @@ class TaskRegistry:
   MINIWOB_FAMILY: Final[str] = 'miniwob'
   MINIWOB_FAMILY_SUBSET: Final[str] = 'miniwob_subset'
 
+  # The Pega family - long-horizon cross-app tasks.
+  PEGA_FAMILY: Final[str] = 'pega'
+
   # Task registries; they contain a mapping from each task name to its class,
   # to construct instances of a task.
   ANDROID_TASK_REGISTRY = {}
@@ -78,6 +84,29 @@ class TaskRegistry:
   )
 
   MINIWOB_TASK_REGISTRY = miniwob_registry.TASK_REGISTRY
+
+  PEGA_TASK_REGISTRY = {
+      pega.BusinessTripPlanning.__name__: pega.BusinessTripPlanning,
+      pega.ExpenseReimbursement.__name__: pega.ExpenseReimbursement,
+      pega.PartyPlanning.__name__: pega.PartyPlanning,
+      pega.MedicalAppointmentWorkflow.__name__: pega.MedicalAppointmentWorkflow,
+      pega.PhotoMemorySharing.__name__: pega.PhotoMemorySharing,
+      pega.NetworkTroubleshooting.__name__: pega.NetworkTroubleshooting,
+      pega.CalendarConflictResolution.__name__: pega.CalendarConflictResolution,
+      pega.StorageSpaceManagement.__name__: pega.StorageSpaceManagement,
+      pega.MissedCallFollowUp.__name__: pega.MissedCallFollowUp,
+      pega.BudgetCheckBeforePurchase.__name__: pega.BudgetCheckBeforePurchase,
+      pega.NewJobOnboarding.__name__: pega.NewJobOnboarding,
+      pega.WeeklyMealPrep.__name__: pega.WeeklyMealPrep,
+      pega.HomeRenovationProject.__name__: pega.HomeRenovationProject,
+      pega.StudentExamPrep.__name__: pega.StudentExamPrep,
+      pega.FitnessGoalTracking.__name__: pega.FitnessGoalTracking,
+      pega.TravelItineraryManagement.__name__: pega.TravelItineraryManagement,
+      pega.EventPlanningAndCoordination.__name__: pega.EventPlanningAndCoordination,
+      pega.ProjectKickoffAndTeamSetup.__name__: pega.ProjectKickoffAndTeamSetup,
+      pega.FamilyHealthRecordSetup.__name__: pega.FamilyHealthRecordSetup,
+      pega.SmallBusinessDailyOperations.__name__: pega.SmallBusinessDailyOperations,
+  }
 
   def get_registry(self, family: str) -> Any:
     """Gets the task registry for the given family.
@@ -104,6 +133,8 @@ class TaskRegistry:
       return miniwob_registry.TASK_REGISTRY_SUBSET
     elif family == self.INFORMATION_RETRIEVAL_FAMILY:
       return self.INFORMATION_RETRIEVAL_TASK_REGISTRY
+    elif family == self.PEGA_FAMILY:
+      return self.PEGA_TASK_REGISTRY
     else:
       raise ValueError(f'Unsupported family: {family}')
 
@@ -200,6 +231,9 @@ class TaskRegistry:
       system.SystemWifiTurnOnVerify,
       system_composite.TurnOffWifiAndTurnOnBluetooth,
       system_composite.TurnOnWifiAndOpenApp,
+      # keep-sorted end
+      # Calendar → SMS → Markor cross-app task.
+      calendar_sms_markor.CalendarQueryThenSmsAndMarkor,
       # keep-sorted end
       # VLC media player tasks.
       vlc.VlcCreatePlaylist,

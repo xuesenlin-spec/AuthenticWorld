@@ -326,6 +326,7 @@ def _run_task_suite(
     return_full_episode_data: bool = False,
     process_episodes_fn=None,
     check_episode_fn: Callable[[dict[str, Any]], bool] | None = None,
+    agent: base_agent.EnvironmentInteractingAgent | None = None,
 ) -> list[dict[str, Any]]:
   """Runs e2e system on suite.
 
@@ -365,6 +366,11 @@ def _run_task_suite(
     raise ValueError(
         'Cannot return full episode data when resuming from a checkpoint.'
     )
+
+  # Calculate total tasks count for display
+  total_tasks = sum(len(instances) for instances in suite.values())
+  task_counter = 0
+
   episodes_metadata: list[dict[str, Any]] = []
   full_episode_data = []
   correct, total = 0, 0
@@ -390,6 +396,10 @@ def _run_task_suite(
       if already_processed:
         _log_and_print('Skipping already processed task %s', instance_name)
         continue
+
+      task_counter += 1
+      if agent is not None:
+        agent.set_task_info(instance.name, task_counter, total_tasks)
 
       episode = _run_task(instance, run_episode, env, demo_mode=demo_mode)
       if (
@@ -483,6 +493,7 @@ def run(
       return_full_episode_data=return_full_episode_data,
       process_episodes_fn=process_episodes_fn,
       check_episode_fn=check_episode_fn,
+      agent=agent,
   )
 
   return results

@@ -74,6 +74,9 @@ class EnvironmentInteractingAgent(abc.ABC):
     self._transition_pause = transition_pause
 
     self._max_steps = None
+    self._task_name = ''
+    self._task_count = 0
+    self._total_tasks = 0
 
   @property
   def transition_pause(self) -> float | None:
@@ -93,6 +96,11 @@ class EnvironmentInteractingAgent(abc.ABC):
 
   def set_max_steps(self, max_steps: int) -> None:
     self._max_steps = max_steps
+
+  def set_task_info(self, task_name: str, task_count: int, total_tasks: int) -> None:
+    self._task_name = task_name
+    self._task_count = task_count
+    self._total_tasks = total_tasks
 
   def reset(self, go_home: bool = False) -> None:
     """Resets the agent."""
