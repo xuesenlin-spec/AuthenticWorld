@@ -51,17 +51,19 @@ TRANSIENT_KEYWORDS = [
     r"permission",
     r"isn't responding",
     r"Close app",
-    r"Wait",
     r"No internet",
     r"Network error",
 ]
 
 
 def detect_transient_ui(ui_elements) -> bool:
-    """Detect if current UI contains a transient (ephemeral) dialog."""
+    """Detect if current UI contains a transient (ephemeral) dialog.
+
+    Only matches when dialog-specific keywords appear in the UI text.
+    System packages (like status bar) are NOT used as triggers since they
+    are always present on every screen.
+    """
     for e in ui_elements:
-        if getattr(e, "package_name", None) and e.package_name in SYSTEM_PACKAGES:
-            return True
         if e.text and any(
             re.search(kw, e.text, re.IGNORECASE) for kw in TRANSIENT_KEYWORDS
         ):
