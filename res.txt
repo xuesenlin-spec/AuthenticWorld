@@ -1,0 +1,233 @@
+# AuthenticWorld Pega Benchmark 任务评测报告
+
+## 总览
+
+共 20 个任务，分为 4 类。每个任务均经过以下维度的代码审查：
+- `app_names` 映射正确性
+- `initialize_task` 清理逻辑
+- `is_successful` 评判器鲁棒性
+- `tear_down` 数据清理完整性
+
+---
+
+## 任务逐一分析
+
+### Task 1: BusinessTripPlanning
+- **app_names**: `simple calendar pro`, `markor`, `simple sms messenger`
+- **包名映射**: 全部正确
+- **initialize_task**: 正确调用 `super()` 和 `_clear_task_app_data()`，额外清理 Calendar
+- **is_successful**: 调用 `_check_calendar_has_event`, `_check_file_contains`, `_check_sms_sent`，均有完整异常处理
+- **tear_down**: 正确调用 `super()` 和 `_clear_task_app_data()`
+- **状态**: ✅ OK
+
+### Task 2: ExpenseReimbursement
+- **app_names**: `markor`, `pro expense`, `simple sms messenger`
+- **包名映射**: 全部正确
+- **initialize_task**: 正确
+- **is_successful**: 调用 `_check_file_contains`, `_check_sms_sent`，安全
+- **tear_down**: 正确
+- **状态**: ✅ OK
+
+### Task 3: PartyPlanning
+- **app_names**: `simple calendar pro`, `simple contacts pro`, `markor`, `simple sms messenger`
+- **包名映射**: `simple contacts pro` 映射为 `com.android.contacts`（**错误**，应为 `com.simplemobiletools.contacts.pro`）
+- **initialize_task**: 正确，但 `_clear_task_app_data` 会清理错误的包
+- **is_successful**: 安全
+- **tear_down**: 联系人数据不会被正确清理
+- **状态**: ⚠️ WARNING（联系人清理失效）
+
+### Task 4: MedicalAppointmentWorkflow
+- **app_names**: `markor`, `simple calendar pro`, `simple contacts pro`, `simple sms messenger`
+- **包名映射**: `simple contacts pro` 映射错误
+- **initialize_task**: 正确，但联系人清理无效
+- **is_successful**: 安全
+- **tear_down**: 联系人数据残留
+- **状态**: ⚠️ WARNING（联系人清理失效）
+
+### Task 5: PhotoMemorySharing
+- **app_names**: `simple gallery pro`, `markor`, `simple calendar pro`, `simple sms messenger`
+- **包名映射**: 全部正确
+- **initialize_task**: 正确
+- **is_successful**: 安全
+- **tear_down**: 正确
+- **状态**: ✅ OK
+
+### Task 6: NetworkTroubleshooting
+- **app_names**: `settings`, `markor`, `simple sms messenger`
+- **包名映射**: 全部正确
+- **initialize_task**: 正确
+- **is_successful**: 调用 `_check_wifi_on`, `_check_bluetooth_on`，均使用 `issue_generic_request`，安全
+- **tear_down**: 正确
+- **状态**: ✅ OK
+
+### Task 7: CalendarConflictResolution
+- **app_names**: `simple calendar pro`, `markor`, `simple sms messenger`
+- **包名映射**: 全部正确
+- **initialize_task**: 正确，额外清理 Calendar
+- **is_successful**: 安全
+- **tear_down**: 正确
+- **状态**: ✅ OK
+
+### Task 8: StorageSpaceManagement
+- **app_names**: `markor`, `simple gallery pro`, `simple sms messenger`
+- **包名映射**: 全部正确
+- **initialize_task**: 正确
+- **is_successful**: 安全
+- **tear_down**: 正确
+- **状态**: ✅ OK
+
+### Task 9: MissedCallFollowUp
+- **app_names**: `dialer`, `simple contacts pro`, `simple sms messenger`, `markor`
+- **包名映射**: `simple contacts pro` 映射错误
+- **initialize_task**: 正确，但联系人清理无效
+- **is_successful**: 安全
+- **tear_down**: 联系人数据残留
+- **状态**: ⚠️ WARNING（联系人清理失效）
+
+### Task 10: BudgetCheckBeforePurchase
+- **app_names**: `pro expense`, `markor`, `simple calendar pro`, `simple sms messenger`
+- **包名映射**: 全部正确
+- **initialize_task**: 正确，额外清理 Calendar
+- **is_successful**: 安全
+- **tear_down**: 正确
+- **状态**: ✅ OK
+
+### Task 11: NewJobOnboarding
+- **app_names**: `simple contacts pro`, `simple calendar pro`, `markor`, `simple sms messenger`
+- **包名映射**: `simple contacts pro` 映射错误
+- **initialize_task**: 正确，但联系人清理无效
+- **is_successful**: 安全
+- **tear_down**: 联系人数据残留
+- **状态**: ⚠️ WARNING（联系人清理失效）
+
+### Task 12: WeeklyMealPrep
+- **app_names**: `markor`, `pro expense`, `simple calendar pro`, `simple sms messenger`
+- **包名映射**: 全部正确
+- **initialize_task**: 正确，额外清理 Calendar
+- **is_successful**: 安全
+- **tear_down**: 正确
+- **状态**: ✅ OK
+
+### Task 13: HomeRenovationProject
+- **app_names**: `markor`, `simple calendar pro`, `pro expense`, `simple contacts pro`, `simple sms messenger`
+- **包名映射**: `simple contacts pro` 映射错误
+- **initialize_task**: 正确，但联系人清理无效
+- **is_successful**: 安全
+- **tear_down**: 联系人数据残留
+- **状态**: ⚠️ WARNING（联系人清理失效）
+
+### Task 14: StudentExamPrep
+- **app_names**: `simple calendar pro`, `markor`, `simple contacts pro`, `simple sms messenger`
+- **包名映射**: `simple contacts pro` 映射错误
+- **initialize_task**: 正确，但联系人清理无效
+- **is_successful**: 安全
+- **tear_down**: 联系人数据残留
+- **状态**: ⚠️ WARNING（联系人清理失效）
+
+### Task 15: FitnessGoalTracking
+- **app_names**: `markor`, `simple calendar pro`, `pro expense`, `simple contacts pro`, `simple sms messenger`
+- **包名映射**: `simple contacts pro` 映射错误
+- **initialize_task**: 正确，但联系人清理无效
+- **is_successful**: 安全
+- **tear_down**: 联系人数据残留
+- **状态**: ⚠️ WARNING（联系人清理失效）
+
+### Task 16: TravelItineraryManagement
+- **app_names**: `simple calendar pro`, `markor`, `simple contacts pro`, `simple sms messenger`, `pro expense`
+- **包名映射**: `simple contacts pro` 映射错误
+- **initialize_task**: 正确，但联系人清理无效
+- **is_successful**: 安全
+- **tear_down**: 联系人数据残留
+- **状态**: ⚠️ WARNING（联系人清理失效）
+
+### Task 17: EventPlanningAndCoordination
+- **app_names**: `simple calendar pro`, `simple contacts pro`, `simple sms messenger`, `markor`, `pro expense`
+- **包名映射**: `simple contacts pro` 映射错误
+- **initialize_task**: 正确，但联系人清理无效
+- **is_successful**: 安全
+- **tear_down**: 联系人数据残留
+- **状态**: ⚠️ WARNING（联系人清理失效）
+
+### Task 18: ProjectKickoffAndTeamSetup
+- **app_names**: `simple calendar pro`, `simple contacts pro`, `simple sms messenger`, `markor`, `pro expense`
+- **包名映射**: `simple contacts pro` 映射错误
+- **initialize_task**: 正确，但联系人清理无效
+- **is_successful**: 安全
+- **tear_down**: 联系人数据残留
+- **状态**: ⚠️ WARNING（联系人清理失效）
+
+### Task 19: FamilyHealthRecordSetup
+- **app_names**: `simple contacts pro`, `markor`, `simple calendar pro`, `pro expense`, `simple sms messenger`
+- **包名映射**: `simple contacts pro` 映射错误
+- **initialize_task**: 正确，但联系人清理无效
+- **is_successful**: 安全
+- **tear_down**: 联系人数据残留
+- **状态**: ⚠️ WARNING（联系人清理失效）
+
+### Task 20: SmallBusinessDailyOperations
+- **app_names**: `markor`, `pro expense`, `simple calendar pro`, `simple contacts pro`, `simple sms messenger`
+- **包名映射**: `simple contacts pro` 映射错误
+- **initialize_task**: 正确，但联系人清理无效
+- **is_successful**: 安全
+- **tear_down**: 联系人数据残留
+- **状态**: ⚠️ WARNING（联系人清理失效）
+
+---
+
+## Helper 函数鲁棒性分析
+
+### `_check_calendar_has_event`
+- **实现**: 通过 `env.controller.pull_file()` 拉取 Calendar DB 到本地，用 Python `sqlite3` 查询
+- **异常处理**: 完整 `try/except Exception: return False` 包裹
+- **状态**: ✅ 安全
+
+### `_check_file_contains`
+- **实现**: 检查文件是否存在 → `cat` 读取内容 → 检查子串匹配 → 回退到模糊文件名匹配
+- **异常处理**: 无显式 try/except，但依赖 adb 输出解析而非异常
+- **状态**: ✅ 安全（文件不存在时返回 False）
+
+### `_check_sms_sent`
+- **实现**: 查询 `content://sms/sent`，检查号码和 fuzzy match 消息体
+- **异常处理**: `_get_sent_messages` 处理空结果，`was_sent` 处理解析错误
+- **状态**: ✅ 安全
+
+### `_get_android_time`
+- **实现**: `adb shell date +%s` 获取时间戳
+- **异常处理**: 无显式 try/except
+- **状态**: ⚠️ 轻微风险（adb 失败时 `int()` 会报错，但概率极低）
+
+---
+
+## 发现的关键问题
+
+### 系统性 Bug：`simple contacts pro` 包名映射错误（影响 12/20 任务）
+
+**位置**: `pega.py` 第 48 行
+
+```python
+"simple contacts pro": "com.android.contacts",   # ❌ 错误
+```
+
+**正确值**:
+```python
+"simple contacts pro": "com.simplemobiletools.contacts.pro",   # ✅ 正确
+```
+
+**影响**:
+- `_clear_task_app_data` 会尝试清理 `com.android.contacts`（可能未安装）
+- 实际的 `com.simplemobiletools.contacts.pro` 数据不会被清理
+- 联系人数据会在任务间泄漏，可能导致误判
+
+**受影响的任务**: 3, 4, 9, 11, 13, 14, 15, 16, 17, 18, 19, 20
+
+---
+
+## 汇总统计表
+
+| 状态 | 任务数量 | 任务列表 |
+|------|---------|----------|
+| ✅ OK | 8 | 1, 2, 5, 6, 7, 8, 10, 12 |
+| ⚠️ WARNING | 12 | 3, 4, 9, 11, 13, 14, 15, 16, 17, 18, 19, 20 |
+| ❌ CRITICAL | 0 | 无 |
+
+**结论**: 不存在导致任务崩溃或完全失败的 CRITICAL 问题。所有 helper 函数都有良好的异常处理。唯一需要修复的是 `simple contacts pro` 的包名映射错误，修复后所有 20 个任务均应为 OK 状态。

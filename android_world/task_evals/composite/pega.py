@@ -45,7 +45,7 @@ _APP_NAME_TO_PACKAGE = {
     "simple sms messenger": "com.simplemobiletools.smsmessenger",
     "markor": "net.gsantner.markor",
     "pro expense": "com.arduia.expense",
-    "simple contacts pro": "com.android.contacts",
+    "simple contacts pro": "com.simplemobiletools.contacts.pro",
     "osmand": "net.osmand",
     "simple gallery pro": "com.simplemobiletools.gallery.pro",
     "audio recorder": "com.dimowner.audiorecorder",
