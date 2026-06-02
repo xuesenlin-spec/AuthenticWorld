@@ -95,6 +95,9 @@ _PATTERN_TO_ACTIVITY = immutabledict.immutabledict(
         "contacts": (
             "com.google.android.contacts/com.android.contacts.activities.PeopleActivity"
         ),
+        "simple contacts pro": (
+            "com.simplemobiletools.contacts.pro/com.simplemobiletools.contacts.pro.activities.MainActivity"
+        ),
         "facebook|fb": "com.facebook.katana/com.facebook.katana.LoginActivity",
         "whatsapp|wa": "com.whatsapp/com.whatsapp.Main",
         "instagram|ig": (

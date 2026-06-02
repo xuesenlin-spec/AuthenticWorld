@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""PegaAgent: Long-horizon GUI agent with Fast-Path and reflection capabilities."""
+"""PegaAgent: Long-horizon GUI agent with Fast-Path and loop reflection."""
 
 import re
 import time
@@ -28,73 +28,18 @@ from android_world.env import interface
 from android_world.env import json_action
 from android_world.env import representation_utils
 
-
-# ---------------------------------------------------------------------------
-# UI Lifetime Detection (Fast-Path)
-# ---------------------------------------------------------------------------
-
-SYSTEM_PACKAGES = {
-    "com.android.packageinstaller",
-    "com.google.android.packageinstaller",
-    "com.android.settings",
-    "com.android.systemui",
-    "com.android.server.telecom",
-    "com.android.permissioncontroller",
-}
-
-TRANSIENT_KEYWORDS = [
-    r"set.*default.*app",
-    r"set.*default.*SMS",
-    r"CHANGE",
-    r"ALLOW",
-    r"DENY",
-    r"permission",
-    r"isn't responding",
-    r"Close app",
-    r"No internet",
-    r"Network error",
-]
-
-
-def detect_transient_ui(ui_elements) -> bool:
-    """Detect if current UI contains a transient (ephemeral) dialog.
-
-    Only matches when dialog-specific keywords appear in the UI text.
-    System packages (like status bar) are NOT used as triggers since they
-    are always present on every screen.
-    """
-    for e in ui_elements:
-        if e.text and any(
-            re.search(kw, e.text, re.IGNORECASE) for kw in TRANSIENT_KEYWORDS
-        ):
-            return True
-    return False
-
-
-def get_fast_path_action(ui_elements) -> dict | None:
-    """Return a fast-path action to handle a transient UI dialog."""
-    priority_buttons = {"CHANGE", "ALLOW", "OK", "SET DEFAULT", "CONFIRM"}
-    dismiss_buttons = {"CANCEL", "DENY", "DISMISS", "NOT NOW", "LATER"}
-
-    for text_set in [priority_buttons, dismiss_buttons]:
-        for i, e in enumerate(ui_elements):
-            if not getattr(e, "is_clickable", None):
-                continue
-            if e.text and e.text.upper() in text_set:
-                return {"action_type": "click", "index": i}
-
-    # Fallback: go back
-    return {"action_type": "navigate_back"}
-
-
 # ---------------------------------------------------------------------------
 # Loop Detection
 # ---------------------------------------------------------------------------
 
+LOOP_DETECTION_THRESHOLD = 3
+MAX_REFLECTIONS = 3
+
+
 class LoopDetector:
     """Detect when the agent is stuck in a repetitive loop."""
 
-    def __init__(self, window: int = 3):
+    def __init__(self, window: int = LOOP_DETECTION_THRESHOLD):
         self.window = window
         self.history = []  # [(action_type, element_text_or_target)]
 
@@ -106,7 +51,6 @@ class LoopDetector:
             return False
         recent = self.history[-self.window:]
         older = self.history[-self.window * 2 : -self.window]
-        # Check if recent actions are identical to older ones
         if not recent or not older:
             return False
         return all(r == o for r, o in zip(recent, older))
@@ -123,57 +67,107 @@ class LoopDetector:
 
 
 # ---------------------------------------------------------------------------
-# Reflection Controller
+# Fast-Path: LLM-controlled tool for handling transient system dialogs
 # ---------------------------------------------------------------------------
 
-REFLECTION_PROMPT_TEMPLATE = (
-    "You are an agent stuck in a loop. Analyze what went wrong and propose a "
-    "new strategy.\n\n"
-    "**Original Goal**: {goal}\n\n"
-    "**Recent History (last {N} steps)**:\n{history}\n\n"
-    "**Problem Detected**: {problem}\n\n"
-    "Analyze:\n"
-    "1. What is the root cause of the failure? (not the surface symptom)\n"
-    "2. What assumption was wrong in the previous approach?\n"
-    "3. What alternative strategies could work?\n"
-    "4. Pick ONE new strategy and explain the first action to take.\n\n"
-    "Respond with:\n"
-    "Reflection: [your analysis]\n"
-    "New Strategy: [the new approach]\n"
-    'First Action: {{"action_type": "...", ...}}\n'
+SYSTEM_DIALOG_KEYWORDS = [
+    r"set.*default.*app",
+    r"set.*default.*SMS",
+    r"ALLOW",
+    r"DENY",
+    r"permission",
+    r"isn't responding",
+    r"Close app",
+    r"No internet",
+    r"Network error",
+]
+
+
+def _find_dialog_button(ui_elements, button_set: set) -> int | None:
+    """Find a button matching one of the given texts."""
+    for i, e in enumerate(ui_elements):
+        if not getattr(e, "is_clickable", None):
+            continue
+        if e.text and e.text.upper() in button_set:
+            return i
+    return None
+
+
+def execute_fast_path(ui_elements, env, button_text: str = None) -> tuple[bool, str]:
+    """Execute a one-shot Fast-Path to handle a system dialog.
+
+    Args:
+        ui_elements: Current UI elements.
+        env: Environment for executing action.
+        button_text: Specific button text to click (LLM-specified).
+            If None, falls back to auto-detect (CHANGE, ALLOW, etc.).
+
+    Returns (success, button_clicked_or_none).
+    """
+    btn_index = None
+    if button_text:
+        btn_index = _find_dialog_button(ui_elements, {button_text.upper()})
+    else:
+        # Auto-detect: priority first, then dismiss
+        priority_buttons = {
+            "CHANGE", "ALLOW", "OK", "SET DEFAULT", "SET AS DEFAULT", "CONFIRM",
+        }
+        dismiss_buttons = {"CANCEL", "DENY", "DISMISS", "NOT NOW", "LATER"}
+        btn_index = _find_dialog_button(ui_elements, priority_buttons)
+        if btn_index is None:
+            btn_index = _find_dialog_button(ui_elements, dismiss_buttons)
+
+    if btn_index is None:
+        return False, "no_actionable_button"
+
+    elem = ui_elements[btn_index]
+    clicked_text = elem.text or f"element_{btn_index}"
+
+    action = json_action.JSONAction(action_type="click", index=btn_index)
+    try:
+        env.execute_action(action)
+        return True, clicked_text
+    except Exception as e:
+        print(f"[FAST-PATH] Failed: {e}")
+        return False, clicked_text
+
+
+def get_dialog_context(ui_elements) -> str:
+    """Extract dialog text for LLM context."""
+    texts = []
+    for e in ui_elements:
+        if e.text:
+            texts.append(e.text)
+    return " | ".join(texts)
+
+
+def has_dialog(ui_elements) -> bool:
+    """Check if current screen has a system dialog."""
+    for e in ui_elements:
+        if e.text and any(
+            re.search(kw, e.text, re.IGNORECASE) for kw in SYSTEM_DIALOG_KEYWORDS
+        ):
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Loop notification prompt
+# ---------------------------------------------------------------------------
+
+LOOP_NOTIFY_PROMPT = (
+    "\n\n**WARNING: Loop Detected**\n"
+    "{problem}\n"
+    "Analyze the situation and choose a different strategy.\n"
+    "You can use the fast_path tool to handle system dialogs:\n"
+    '- `{{"action_type": "fast_path", "mode": "immediate", "button_text": "CHANGE"}}` '
+    '→ Check for dialog NOW and click button immediately.\n'
+    '- `{{"action_type": "fast_path", "mode": "next_step", "button_text": "CHANGE"}}` '
+    '→ Set a deferred handler: after your next action executes, check if a dialog '
+    'appears and click the button. Use this when the dialog only appears AFTER your '
+    'action (e.g., clicking Send triggers the dialog). fast_path is one-shot: '
+    'after it triggers once, it is consumed.\n'
 )
-
-
-def _build_reflection_prompt(
-    goal: str, history: list[str], problem: str, window: int
-) -> str:
-    history_str = "\n".join(history) if history else "No history available."
-    return REFLECTION_PROMPT_TEMPLATE.format(
-        goal=goal,
-        N=window * 2,
-        history=history_str,
-        problem=problem,
-    )
-
-
-def _parse_reflection_result(text: str) -> tuple[str, str | None]:
-    """Parse reflection output to extract reason and action JSON."""
-    action = None
-    for line in text.split("\n"):
-        if line.strip().startswith("First Action:"):
-            action_part = line.split("First Action:", 1)[1].strip()
-            # Extract JSON from the line
-            start = action_part.find("{")
-            end = action_part.rfind("}") + 1
-            if start >= 0 and end > start:
-                action = action_part[start:end]
-    # Extract reason from Reflection line
-    reason = "Reflection triggered due to repetitive loop."
-    for line in text.split("\n"):
-        if line.strip().startswith("Reflection:"):
-            reason = line.split("Reflection:", 1)[1].strip()[:200]
-            break
-    return reason, action
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +175,7 @@ def _parse_reflection_result(text: str) -> tuple[str, str | None]:
 # ---------------------------------------------------------------------------
 
 class PegaAgent(t3a.T3A):
-    """PegaAgent: T3A with Fast-Path for transient UI and loop reflection."""
+    """PegaAgent: T3A with LLM-controlled Fast-Path and loop notification."""
 
     def __init__(
         self,
@@ -190,21 +184,25 @@ class PegaAgent(t3a.T3A):
         name: str = "PegaAgent",
     ):
         super().__init__(env, llm, name)
-        self.loop_detector = LoopDetector(window=3)
+        self.loop_detector = LoopDetector(window=LOOP_DETECTION_THRESHOLD)
         self.reflection_count = 0
-        self.max_reflections = 3
+        self.max_reflections = MAX_REFLECTIONS
+        # Deferred fast_path: set by LLM, checked after action execution
+        self.deferred_fast_path = None  # {"button_text": str} or None
 
     def reset(self, go_home_on_reset: bool = False):
         super().reset(go_home_on_reset)
-        self.loop_detector = LoopDetector(window=3)
+        self.loop_detector = LoopDetector(window=LOOP_DETECTION_THRESHOLD)
         self.reflection_count = 0
+        self.deferred_fast_path = None
 
     def _execute_action_and_record(
         self, converted_action, ui_elements, step_data, logical_screen_size
     ) -> tuple[bool, str]:
         """Execute action, record for loop detection. Returns (success, target_desc)."""
         target_desc = ""
-        if converted_action.index is not None and converted_action.index < len(ui_elements):
+        if (converted_action.index is not None
+                and converted_action.index < len(ui_elements)):
             elem = ui_elements[converted_action.index]
             target_desc = elem.text or f"element_{converted_action.index}"
 
@@ -226,6 +224,59 @@ class PegaAgent(t3a.T3A):
                 + converted_action.action_type
             )
             return False, target_desc
+
+    def _handle_fast_path_immediate(self, ui_elements, step_data, button_text: str = None):
+        """Handle fast_path mode=immediate: check dialog now and click button."""
+        if has_dialog(ui_elements):
+            dialog_text = get_dialog_context(ui_elements)
+            print(f"[FAST-PATH immediate] Dialog: {dialog_text}")
+            ok, clicked_text = execute_fast_path(ui_elements, self.env, button_text)
+            if ok:
+                summary = (
+                    f"[FAST-PATH immediate] Dialog handled. "
+                    f"Clicked '{clicked_text}'."
+                )
+            else:
+                summary = (
+                    f"[FAST-PATH immediate] No button '{button_text}' found on dialog. "
+                    f"Dialog: {dialog_text}"
+                )
+            return True, summary
+        else:
+            print("[FAST-PATH immediate] No dialog present.")
+            return False, "[FAST-PATH immediate] No dialog present, action not taken."
+
+    def _handle_fast_path_next_step(self, ui_elements, button_text: str):
+        """Set deferred fast_path: will trigger after next action executes."""
+        self.deferred_fast_path = {"button_text": button_text}
+        print(f"[FAST-PATH next_step] Deferred: will click '{button_text}' if dialog appears after next action.")
+
+    def _check_and_execute_deferred_fast_path(self, ui_elements, step_data, logical_screen_size):
+        """After action execution, check deferred fast_path and handle if dialog exists."""
+        if self.deferred_fast_path is None:
+            return None
+
+        button_text = self.deferred_fast_path["button_text"]
+        self.deferred_fast_path = None  # One-shot: clear after check
+
+        if has_dialog(ui_elements):
+            dialog_text = get_dialog_context(ui_elements)
+            print(f"[FAST-PATH deferred] Dialog appeared: {dialog_text}")
+            ok, clicked_text = execute_fast_path(ui_elements, self.env, button_text)
+            if ok:
+                summary = (
+                    f"[FAST-PATH deferred] Dialog handled automatically. "
+                    f"Clicked '{clicked_text}' (button='{button_text}')."
+                )
+            else:
+                summary = (
+                    f"[FAST-PATH deferred] Dialog appeared but button '{button_text}' "
+                    f"not found. Dialog: {dialog_text}"
+                )
+            return summary
+        else:
+            print(f"[FAST-PATH deferred] No dialog after action. Deferred fast_path consumed.")
+            return None
 
     def step(self, goal: str) -> base_agent.AgentInteractionResult:
         step_data = {
@@ -264,41 +315,25 @@ class PegaAgent(t3a.T3A):
         step_data["before_screenshot"] = state.pixels.copy()
         step_data["before_element_list"] = ui_elements
 
-        # --- Fast-Path: detect transient UI and respond immediately ---
-        if detect_transient_ui(ui_elements):
-            print("[FAST-PATH] Transient UI detected, bypassing LLM.")
-            fp_action = get_fast_path_action(ui_elements)
-            if fp_action:
-                print(f"[FAST-PATH] Executing: {fp_action}")
-                converted_action = json_action.JSONAction(**fp_action)
+        # --- Check for loop and add notification to prompt ---
+        history_summaries = [
+            "Step " + str(i + 1) + ": " + step_info["summary"]
+            for i, step_info in enumerate(self.history)
+        ]
+        loop_notify = ""
+        if self.loop_detector.is_stuck():
+            problem = self.loop_detector.get_problem_description()
+            print(f"\n[LOOP DETECTED] {problem}")
+            loop_notify = LOOP_NOTIFY_PROMPT.format(problem=problem)
 
-                ok, _ = self._execute_action_and_record(
-                    converted_action, ui_elements, step_data, logical_screen_size
-                )
-                if not ok:
-                    step_data["summary"] = "Fast-Path action failed."
-                    self.history.append(step_data)
-                    return base_agent.AgentInteractionResult(False, step_data)
-
-                # After fast-path, get new state and continue to normal flow
-                state = self.get_post_transition_state()
-                ui_elements = state.ui_elements
-                before_element_list = t3a._generate_ui_elements_description_list_full(
-                    ui_elements, logical_screen_size
-                )
-                step_data["after_screenshot"] = state.pixels.copy()
-                step_data["after_element_list"] = ui_elements
-
-        # --- Normal LLM decision flow ---
+        # Build action prompt
         action_prompt = t3a._action_selection_prompt(
             goal,
-            [
-                "Step " + str(i + 1) + ": " + step_info["summary"]
-                for i, step_info in enumerate(self.history)
-            ],
+            history_summaries,
             before_element_list,
             self.additional_guidelines,
-        )
+        ) + loop_notify
+
         step_data["action_prompt"] = action_prompt
         _t = time.time()
         action_output, is_safe, raw_response = self.llm.predict(action_prompt)
@@ -327,20 +362,83 @@ class PegaAgent(t3a.T3A):
             self.history.append(step_data)
             return base_agent.AgentInteractionResult(False, step_data)
 
-        print("Action: " + action)
         print("Reason: " + reason)
+        print("Action: " + action)
 
+        # --- Parse action and handle fast_path BEFORE creating JSONAction ---
         try:
-            converted_action = json_action.JSONAction(
-                **agent_utils.extract_json(action),
-            )
+            action_dict = agent_utils.extract_json(action)
         except Exception as e:
             print("Failed to convert the output to a valid action.")
             print(str(e))
             step_data["summary"] = (
                 "Can not parse the output to a valid action. Please make sure to pick"
-                " the action from the list with the correct json format!"
+                " the action from the list with the correct JSON format!"
             )
+            self.history.append(step_data)
+            return base_agent.AgentInteractionResult(False, step_data)
+
+        # Handle fast_path action type
+        if action_dict.get("action_type") == "fast_path":
+            mode = action_dict.get("mode", "immediate")
+            button_text = action_dict.get("button_text", None)
+
+            if mode == "next_step":
+                self._handle_fast_path_next_step(ui_elements, button_text)
+                # Don't execute a normal action, just record and continue
+                step_data["summary"] = f"[FAST-PATH next_step] Deferred handler set for '{button_text}'."
+                self.history.append(step_data)
+                return base_agent.AgentInteractionResult(False, step_data)
+
+            elif mode == "immediate":
+                handled, summary = self._handle_fast_path_immediate(
+                    ui_elements, step_data, button_text,
+                )
+                step_data["summary"] = summary
+                self.history.append(step_data)
+                if not handled:
+                    return base_agent.AgentInteractionResult(False, step_data)
+                # Get new state after fast_path
+                state = self.get_post_transition_state()
+                ui_elements = state.ui_elements
+                before_element_list = t3a._generate_ui_elements_description_list_full(
+                    ui_elements, logical_screen_size,
+                )
+                step_data["before_screenshot"] = state.pixels.copy()
+                step_data["before_element_list"] = ui_elements
+                # Re-prompt LLM with new state
+                history_summaries = [
+                    "Step " + str(i + 1) + ": " + step_info["summary"]
+                    for i, step_info in enumerate(self.history)
+                ]
+                action_prompt = t3a._action_selection_prompt(
+                    goal, history_summaries, before_element_list,
+                    self.additional_guidelines,
+                )
+                step_data["action_prompt"] = action_prompt
+                _t = time.time()
+                action_output, is_safe, raw_response = self.llm.predict(action_prompt)
+                print(f"[TIMING] LLM (after fast_path): {time.time()-_t:.2f}s")
+                if not raw_response:
+                    raise RuntimeError("Error calling LLM after fast_path.")
+                reason, action = m3a_utils.parse_reason_action_output(action_output)
+                if (not reason) or (not action):
+                    step_data["summary"] = "LLM format error after fast_path."
+                    self.history.append(step_data)
+                    return base_agent.AgentInteractionResult(False, step_data)
+                print("Reason (after fast_path): " + reason)
+                print("Action (after fast_path): " + action)
+                try:
+                    action_dict = agent_utils.extract_json(action)
+                except Exception:
+                    self.history.append(step_data)
+                    return base_agent.AgentInteractionResult(False, step_data)
+
+        # --- Execute normal action ---
+        try:
+            converted_action = json_action.JSONAction(**action_dict)
+        except Exception as e:
+            print("Failed to create JSONAction: " + str(e))
             self.history.append(step_data)
             return base_agent.AgentInteractionResult(False, step_data)
 
@@ -382,52 +480,16 @@ class PegaAgent(t3a.T3A):
             self.history.append(step_data)
             return base_agent.AgentInteractionResult(False, step_data)
 
-        # --- Loop Detection + Reflection ---
-        if self.loop_detector.is_stuck():
-            problem = self.loop_detector.get_problem_description()
-            print(f"\n[REFLECTION] Loop detected! Problem: {problem}")
-
-            if self.reflection_count < self.max_reflections:
-                # Build reflection prompt from recent history
-                recent_history = [
-                    f"Step {step_num - i}: {s.get('summary', 'N/A')}"
-                    for i, s in enumerate(reversed(self.history[-self.loop_detector.window * 2:]))
-                    if s.get("summary")
-                ]
-                refl_prompt = _build_reflection_prompt(
-                    goal, recent_history, problem, self.loop_detector.window
-                )
-
-                _t = time.time()
-                refl_output, _, refl_raw = self.llm.predict(refl_prompt)
-                print(f"[TIMING] LLM reflection: {time.time()-_t:.2f}s")
-
-                refl_reason, refl_action = _parse_reflection_result(refl_output)
-                print(f"[REFLECTION] Reason: {refl_reason}")
-                print(f"[REFLECTION] New Action: {refl_action}")
-
-                if refl_action:
-                    try:
-                        refl_converted = json_action.JSONAction(
-                            **agent_utils.extract_json(refl_action)
-                        )
-                        # Execute reflection action
-                        ok2, _ = self._execute_action_and_record(
-                            refl_converted, ui_elements, step_data, logical_screen_size
-                        )
-                        if ok2:
-                            self.reflection_count += 1
-                            print(
-                                f"[REFLECTION] Reflection action executed successfully. "
-                                f"(reflection #{self.reflection_count})"
-                            )
-                    except Exception as e:
-                        print(f"[REFLECTION] Failed to execute reflection action: {e}")
-
+        # --- Check deferred fast_path: dialog appeared after action? ---
         state = self.get_post_transition_state()
-        print(
-            f"[TIMING] get_post_transition_state (after action): {time.time()-_t:.2f}s"
+        fp_summary = self._check_and_execute_deferred_fast_path(
+            state.ui_elements, step_data, logical_screen_size,
         )
+        if fp_summary:
+            print(f"[FAST-PATH deferred] {fp_summary}")
+            # Re-get state after fast_path
+            state = self.get_post_transition_state()
+
         ui_elements = state.ui_elements
 
         after_element_list = t3a._generate_ui_elements_description_list_full(
@@ -438,6 +500,8 @@ class PegaAgent(t3a.T3A):
         step_data["after_element_list"] = ui_elements
 
         summary = f"Action: {action}. Reason: {reason}"
+        if fp_summary:
+            summary += f"\n{fp_summary}"
         step_data["summary_prompt"] = None
         step_data["summary"] = summary
         step_data["summary_raw_response"] = None

@@ -39,6 +39,63 @@ from android_world.utils import fuzzy_match_lib
 # Helper utilities
 # ---------------------------------------------------------------------------
 
+# Map app display names to package names for cleanup
+_APP_NAME_TO_PACKAGE = {
+    "simple calendar pro": "com.simplemobiletools.calendar.pro",
+    "simple sms messenger": "com.simplemobiletools.smsmessenger",
+    "markor": "net.gsantner.markor",
+    "pro expense": "com.arduia.expense",
+    "simple contacts pro": "com.android.contacts",
+    "osmand": "net.osmand",
+    "simple gallery pro": "com.simplemobiletools.gallery.pro",
+    "audio recorder": "com.dimowner.audiorecorder",
+    "dialer": "com.android.dialer",
+    "broccoli": "org.broccoliapp.broccoli",
+    "settings": "com.android.settings",
+    "retro music": "code.name.monkey.retromusic",
+}
+
+
+def _clear_task_app_data(app_names: tuple[str, ...], env: interface.AsyncEnv) -> None:
+    """Clear app data for all apps used by a task.
+
+    Clears both internal app data (via pm clear) and external storage files
+    (for apps like Markor that store files on shared storage).
+    """
+    for app_name in app_names:
+        pkg = _APP_NAME_TO_PACKAGE.get(app_name.lower().strip())
+        if pkg:
+            try:
+                adb_utils.clear_app_data(pkg, env.controller)
+            except Exception:
+                pass  # App may not be installed or may not have data
+
+    # Also clear external storage directories for specific apps
+    external_dirs = {
+        "markor": device_constants.MARKOR_DATA,
+    }
+    for app_name in app_names:
+        ext_dir = external_dirs.get(app_name.lower().strip())
+        if ext_dir:
+            try:
+                adb_utils.issue_generic_request(
+                    ["shell", "rm", "-rf", ext_dir],
+                    env.controller,
+                )
+            except Exception:
+                pass
+
+    # Clear SMS database if SMS app was used
+    sms_app_names = {"simple sms messenger", "simple sms"}
+    if any(app_name.lower() in sms_app_names for app_name in app_names):
+        sms_db = "/data/data/com.android.providers.telephony/databases/mmssms.db"
+        try:
+            adb_utils.execute_sql_command(sms_db, "DELETE FROM sms;", env.controller)
+            adb_utils.execute_sql_command(sms_db, "DELETE FROM threads;", env.controller)
+        except Exception:
+            pass
+
+
 def _generate_random_phone() -> str:
     return "+1" + "".join(random.choices("0123456789", k=10))
 
@@ -156,7 +213,7 @@ class BusinessTripPlanning(task_eval.TaskEval):
     """Task: Plan a business trip across Calendar, Maps, Notes, and SMS."""
 
     app_names = ("simple calendar pro", "markor", "simple sms messenger")
-    complexity = 6.0  # 60 steps
+    complexity = 8.0  # 80 steps
     schema = {
         "type": "object",
         "properties": {
@@ -178,6 +235,7 @@ class BusinessTripPlanning(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
@@ -205,6 +263,7 @@ class BusinessTripPlanning(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -255,6 +314,7 @@ class ExpenseReimbursement(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
         super().is_successful(env)
@@ -273,6 +333,7 @@ class ExpenseReimbursement(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -323,6 +384,7 @@ class PartyPlanning(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
@@ -340,6 +402,7 @@ class PartyPlanning(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -395,6 +458,7 @@ class MedicalAppointmentWorkflow(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
@@ -413,6 +477,7 @@ class MedicalAppointmentWorkflow(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -470,6 +535,7 @@ class PhotoMemorySharing(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
@@ -490,6 +556,7 @@ class PhotoMemorySharing(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -537,6 +604,7 @@ class NetworkTroubleshooting(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
         super().is_successful(env)
@@ -558,6 +626,7 @@ class NetworkTroubleshooting(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -592,6 +661,7 @@ class CalendarConflictResolution(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
@@ -609,6 +679,7 @@ class CalendarConflictResolution(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -643,6 +714,7 @@ class StorageSpaceManagement(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
         super().is_successful(env)
@@ -658,6 +730,7 @@ class StorageSpaceManagement(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -691,6 +764,7 @@ class MissedCallFollowUp(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
         super().is_successful(env)
@@ -707,6 +781,7 @@ class MissedCallFollowUp(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -753,6 +828,7 @@ class BudgetCheckBeforePurchase(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
@@ -770,6 +846,7 @@ class BudgetCheckBeforePurchase(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -830,6 +907,7 @@ class NewJobOnboarding(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
@@ -847,6 +925,7 @@ class NewJobOnboarding(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -898,6 +977,7 @@ class WeeklyMealPrep(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
@@ -916,6 +996,7 @@ class WeeklyMealPrep(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -979,6 +1060,7 @@ class HomeRenovationProject(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
@@ -997,6 +1079,7 @@ class HomeRenovationProject(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -1053,6 +1136,7 @@ class StudentExamPrep(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
@@ -1072,6 +1156,7 @@ class StudentExamPrep(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -1124,6 +1209,7 @@ class FitnessGoalTracking(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
@@ -1141,6 +1227,7 @@ class FitnessGoalTracking(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -1201,6 +1288,7 @@ class TravelItineraryManagement(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
@@ -1219,6 +1307,7 @@ class TravelItineraryManagement(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -1275,6 +1364,7 @@ class EventPlanningAndCoordination(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
@@ -1292,6 +1382,7 @@ class EventPlanningAndCoordination(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -1347,6 +1438,7 @@ class ProjectKickoffAndTeamSetup(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
@@ -1364,6 +1456,7 @@ class ProjectKickoffAndTeamSetup(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -1426,6 +1519,7 @@ class FamilyHealthRecordSetup(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
@@ -1443,6 +1537,7 @@ class FamilyHealthRecordSetup(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -1513,6 +1608,7 @@ class SmallBusinessDailyOperations(task_eval.TaskEval):
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
+        _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
@@ -1534,6 +1630,7 @@ class SmallBusinessDailyOperations(task_eval.TaskEval):
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
+        _clear_task_app_data(self.app_names, env)
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
@@ -1567,14 +1664,25 @@ class SmallBusinessDailyOperations(task_eval.TaskEval):
 def _check_calendar_has_event(env, keyword: str) -> bool:
     """Check if the calendar has an event matching the keyword.
 
-    Uses the Calendar SQLite database to avoid GUI parsing issues.
+    Follows the same approach as AndroidWorld's original calendar tasks:
+    pull the DB file from device to local temp dir, then query locally.
     """
-    db_path = "/data/data/com.simplemobiletools.calendar.pro/databases/calendar.db"
-    # Query events
-    res = adb_utils.issue_generic_request(
-        ["shell", "sqlite3", db_path,
-         "SELECT title FROM Events WHERE title LIKE '%" + keyword + "%'"],
-        env.controller,
-    )
-    output = res.generic.output.decode().strip()
-    return keyword.lower() in output.lower() if output else False
+    db_path = "/data/data/com.simplemobiletools.calendar.pro/databases/events.db"
+    try:
+        import tempfile, sqlite3, os
+        tmpdir = tempfile.mkdtemp()
+        local_db = os.path.join(tmpdir, "events.db")
+        env.controller.pull_file(db_path, local_db)
+        conn = sqlite3.connect(local_db)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT title FROM events WHERE title LIKE ?",
+            ("%" + keyword + "%",)
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        os.unlink(local_db)
+        os.rmdir(tmpdir)
+        return any(keyword.lower() in row[0].lower() for row in rows if row[0])
+    except Exception:
+        return False

@@ -254,6 +254,7 @@ def _run_task(
         e,
     )
     traceback.print_exc()
+    task.tear_down(env)  # Ensure cleanup even on failure
     return _create_failed_result(
         task.name, task.goal, traceback.format_exc(), time.time() - start
     )
