@@ -506,15 +506,14 @@ class MedicalAppointmentWorkflow(task_eval.TaskEval):
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
         # Pre-create symptom file in Markor
         symptoms = self.params["symptoms_list"]
-        content = "\n".join(symptoms)
-        file_path = f"{device_constants.MARKOR_DATA}/{self.params['symptom_file']}"
-        posix_path = file_utils.convert_to_posix_path("", file_path)
+        content = "\\n".join(symptoms)
+        symptom_path = f"{device_constants.MARKOR_DATA}/{self.params['symptom_file']}"
         adb_utils.issue_generic_request(
             ["shell", "mkdir", "-p", device_constants.MARKOR_DATA],
             env.controller,
         )
         adb_utils.issue_generic_request(
-            ["shell", "echo", "'" + content + "'", ">", posix_path],
+            f"shell echo -e '{content}' > {symptom_path}",
             env.controller,
         )
 
@@ -907,22 +906,22 @@ class BudgetCheckBeforePurchase(task_eval.TaskEval):
             ["shell", "mkdir", "-p", device_constants.MARKOR_DATA],
             env.controller,
         )
+        # Pre-create files using adb_utils
+        budget = self.params["budget_limit"]
         budget_path = f"{device_constants.MARKOR_DATA}/{self.params['budget_file']}"
-        posix_budget = file_utils.convert_to_posix_path("", budget_path)
         adb_utils.issue_generic_request(
-            ["shell", "echo", f"Budget Limit: ${budget}", ">", posix_budget],
+            f"shell echo 'Budget Limit: ${budget}' > {budget_path}",
             env.controller,
         )
 
         # Pre-create shopping list file in Markor
         items = self.params["shopping_items"]  # List of (name, price) tuples
-        shopping_content = "Shopping List:\n" + "\n".join(
+        shopping_content = "Shopping List:\\n" + "\\n".join(
             f"- {name}: ${price}" for name, price in items
         )
         shopping_path = f"{device_constants.MARKOR_DATA}/{self.params['shopping_file']}"
-        posix_shopping = file_utils.convert_to_posix_path("", shopping_path)
         adb_utils.issue_generic_request(
-            ["shell", "echo", "'" + shopping_content + "'", ">", posix_shopping],
+            f"shell echo -e '{shopping_content}' > {shopping_path}",
             env.controller,
         )
 
