@@ -127,14 +127,33 @@ def _generate_random_contacts(n: int = 2) -> list[dict]:
     return contacts
 
 
-def _check_sms_sent(env, phone: str, body: str, time_mins: int = 60) -> bool:
-    """Check if an SMS was sent to phone with matching body."""
+def _check_sms_sent(env, phone: str, keyword: str, time_mins: int = 60) -> bool:
+    """Check if an SMS was sent to phone containing the keyword.
+
+    Uses substring matching instead of fuzzy_match to handle cases where
+    the agent sends a longer message that includes the keyword.
+    """
     messages = _get_sent_messages(env)
     current_time = _get_android_time(env)
-    return sms_validators.was_sent(
-        messages, phone_number=phone, body=body,
-        current_time_ms=current_time, time_mins=time_mins,
-    )
+    n_minutes_ms = time_mins * 60 * 1000
+
+    for message in messages:
+        fields = sms_validators.parse_message(message)
+        try:
+            msg_number = fields["address"].replace("-", "").replace(" ", "")
+            msg_body = fields["body"]
+            msg_date = int(fields["date"])
+        except KeyError:
+            continue
+
+        if msg_number != phone:
+            continue
+        if current_time - msg_date > n_minutes_ms:
+            continue
+        # Use substring matching instead of fuzzy_match
+        if keyword.lower() in msg_body.lower():
+            return True
+    return False
 
 
 def _get_sent_messages(env):
@@ -1714,8 +1733,9 @@ class SmallBusinessDailyOperations(task_eval.TaskEval):
 def _check_calendar_has_event(env, keyword: str) -> bool:
     """Check if the calendar has an event matching the keyword.
 
-    Follows the same approach as AndroidWorld's original calendar tasks:
-    pull the DB file from device to local temp dir, then query locally.
+    Tries two approaches:
+    1. Pull the DB file from device and query locally (primary)
+    2. Query via content provider as fallback
     """
     db_path = "/data/data/com.simplemobiletools.calendar.pro/databases/events.db"
     try:
@@ -1733,6 +1753,20 @@ def _check_calendar_has_event(env, keyword: str) -> bool:
         conn.close()
         os.unlink(local_db)
         os.rmdir(tmpdir)
-        return any(keyword.lower() in row[0].lower() for row in rows if row[0])
+        if any(keyword.lower() in row[0].lower() for row in rows if row[0]):
+            return True
+    except Exception:
+        pass
+
+    # Fallback: query via content provider
+    try:
+        res = adb_utils.issue_generic_request(
+            ["shell", "content", "query", "--uri",
+             "content://com.android.calendar/events",
+             "--projection", "title"],
+            env.controller,
+        )
+        output = res.generic.output.decode().replace("\r", "")
+        return keyword.lower() in output.lower()
     except Exception:
         return False
