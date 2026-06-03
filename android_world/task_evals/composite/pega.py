@@ -137,6 +137,9 @@ def _check_sms_sent(env, phone: str, keyword: str, time_mins: int = 60) -> bool:
     current_time = _get_android_time(env)
     n_minutes_ms = time_mins * 60 * 1000
 
+    print(f"[SMS CHECK] Looking for phone={phone}, keyword='{keyword}'")
+    print(f"[SMS CHECK] Total messages in DB: {len(messages)}")
+
     for message in messages:
         fields = sms_validators.parse_message(message)
         try:
@@ -146,13 +149,20 @@ def _check_sms_sent(env, phone: str, keyword: str, time_mins: int = 60) -> bool:
         except KeyError:
             continue
 
+        print(f"[SMS CHECK] Found msg: number={msg_number}, body='{msg_body[:50]}...'")
         if msg_number != phone:
+            print(f"[SMS CHECK]   -> phone mismatch")
             continue
         if current_time - msg_date > n_minutes_ms:
+            print(f"[SMS CHECK]   -> too old")
             continue
         # Use substring matching instead of fuzzy_match
         if keyword.lower() in msg_body.lower():
+            print(f"[SMS CHECK]   -> MATCH!")
             return True
+        else:
+            print(f"[SMS CHECK]   -> keyword not in body")
+    print(f"[SMS CHECK] No matching SMS found.")
     return False
 
 
@@ -458,7 +468,7 @@ class PartyPlanning(task_eval.TaskEval):
 
 
 class MedicalAppointmentWorkflow(task_eval.TaskEval):
-    """Task: Record symptoms, schedule appointment, add doctor contact, notify family."""
+    """LDP Task: Read symptoms from Markor, count them, decide appointment type."""
 
     app_names = ("markor", "simple calendar pro",
                  "simple contacts pro", "simple sms messenger")
@@ -466,52 +476,61 @@ class MedicalAppointmentWorkflow(task_eval.TaskEval):
     schema = {
         "type": "object",
         "properties": {
-            "symptom1": {"type": "string"},
-            "symptom2": {"type": "string"},
-            "symptom3": {"type": "string"},
+            "symptom_file": {"type": "string"},
             "date": {"type": "string"},
             "time": {"type": "string"},
             "clinic_name": {"type": "string"},
             "doctor_name": {"type": "string"},
             "clinic_phone": {"type": "string"},
             "family_phone": {"type": "string"},
-            "note_file_name": {"type": "string"},
         },
         "required": [
-            "symptom1", "symptom2", "symptom3",
-            "date", "time", "clinic_name", "doctor_name",
-            "clinic_phone", "family_phone", "note_file_name",
+            "symptom_file", "date", "time", "clinic_name", "doctor_name",
+            "clinic_phone", "family_phone",
         ],
     }
     template = (
-        "You are not feeling well. 1) Create a note in Markor named "
-        "{note_file_name} recording your symptoms: {symptom1}, {symptom2}, "
-        "{symptom3}. 2) Create a calendar event 'Doctor Appointment - "
-        "{clinic_name}' on {date} at {time}. 3) Add contact 'Dr. {doctor_name}' "
-        "with phone {clinic_phone} in Simple Contacts Pro. 4) Send SMS to "
-        "{family_phone} about your appointment."
+        "You are not feeling well. Open Markor and read the note "
+        "{symptom_file} which lists your symptoms (one per line). "
+        "Count how many symptoms you have. "
+        "If you have more than 3 symptoms, create a 'Specialist Appointment' "
+        "in Calendar on {date} at {time}. "
+        "If you have 3 or fewer symptoms, create a 'Routine Checkup' instead. "
+        "Then add contact 'Dr. {doctor_name}' with phone {clinic_phone} "
+        "in Simple Contacts Pro, and send SMS to {family_phone} about your appointment."
     )
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
         _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
+        # Pre-create symptom file in Markor
+        symptoms = self.params["symptoms_list"]
+        content = "\n".join(symptoms)
+        file_path = f"{device_constants.MARKOR_DATA}/{self.params['symptom_file']}"
+        posix_path = file_utils.convert_to_posix_path("", file_path)
+        adb_utils.issue_generic_request(
+            ["shell", "mkdir", "-p", device_constants.MARKOR_DATA],
+            env.controller,
+        )
+        adb_utils.issue_generic_request(
+            ["shell", "echo", "'" + content + "'", ">", posix_path],
+            env.controller,
+        )
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
         super().is_successful(env)
-        note = _check_file_contains(
-            env, self.params["note_file_name"],
-            device_constants.MARKOR_DATA,
-            [self.params["symptom1"], self.params["symptom2"],
-             self.params["symptom3"]],
-        )
-        cal = _check_calendar_has_event(env, keyword="Doctor Appointment")
+        # Read symptoms from pre-created file to determine expected behavior
+        num_symptoms = len(self.params["symptoms_list"])
+        expected_keyword = "Specialist Appointment" if num_symptoms > 3 else "Routine Checkup"
+
+        cal = _check_calendar_has_event(env, keyword=expected_keyword)
         sms = _check_sms_sent(
             env, self.params["family_phone"], "appointment", time_mins=60,
         )
-        if not note or not cal or not sms:
-            print(f"\n[FAIL DETAILS] note={note}, calendar={cal}, sms={sms}")
-        return (note + cal + sms) / 3.0
+        if not cal or not sms:
+            print(f"\n[FAIL DETAILS] calendar (expected '{expected_keyword}')={cal}, sms={sms}")
+        return (cal + sms) / 2.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
@@ -521,23 +540,22 @@ class MedicalAppointmentWorkflow(task_eval.TaskEval):
     def generate_random_params(cls) -> dict[str, Any]:
         d = _generate_random_date()
         h = random.randint(8, 17)
+        n_symptoms = random.randint(2, 5)  # 2-5 symptoms to trigger either branch
         symptoms = [
-            user_data_generation.generate_random_string(6).title(),
-            user_data_generation.generate_random_string(6).title(),
-            user_data_generation.generate_random_string(6).title(),
+            user_data_generation.generate_random_string(6).title()
+            for _ in range(n_symptoms)
         ]
         doctor = user_data_generation.generate_random_string(6).title()
         clinic = user_data_generation.generate_random_string(8).title() + " Clinic"
-        note_name = f"medical_{user_data_generation.generate_random_string(6)}.txt"
+        symptom_file = f"my_symptoms_{user_data_generation.generate_random_string(6)}.txt"
         return {
-            "symptom1": symptoms[0], "symptom2": symptoms[1],
-            "symptom3": symptoms[2],
+            "symptom_file": symptom_file,
+            "symptoms_list": symptoms,  # Hidden from Goal, used for pre-setup
             "date": d["date_str"], "time": f"{h:02d}:00",
             "clinic_name": clinic,
             "doctor_name": doctor,
             "clinic_phone": _generate_random_phone(),
             "family_phone": _generate_random_phone(),
-            "note_file_name": note_name,
         }
 
 
@@ -842,7 +860,7 @@ class MissedCallFollowUp(task_eval.TaskEval):
 
 
 class BudgetCheckBeforePurchase(task_eval.TaskEval):
-    """Task: Check expenses against budget, decide whether to approve purchases."""
+    """LDP Task: Read budget/shopping from Markor, decide to buy or warn."""
 
     app_names = ("pro expense", "markor",
                  "simple calendar pro", "simple sms messenger")
@@ -850,7 +868,8 @@ class BudgetCheckBeforePurchase(task_eval.TaskEval):
     schema = {
         "type": "object",
         "properties": {
-            "budget_limit": {"type": "number"},
+            "budget_file": {"type": "string"},
+            "shopping_file": {"type": "string"},
             "item1": {"type": "string"},
             "item2": {"type": "string"},
             "item3": {"type": "string"},
@@ -861,18 +880,20 @@ class BudgetCheckBeforePurchase(task_eval.TaskEval):
             "note_file_name": {"type": "string"},
         },
         "required": [
-            "budget_limit", "item1", "item2", "item3",
+            "budget_file", "shopping_file",
+            "item1", "item2", "item3",
             "price1", "price2", "price3", "phone", "note_file_name",
         ],
     }
     template = (
         "You want to buy some items but need to check your budget first. "
-        "Budget limit: ${budget_limit}. Items: {item1} ${price1}, "
-        "{item2} ${price2}, {item3} ${price3}. 1) Check your current expenses "
-        "in Pro Expense. 2) If under budget, add the three purchases; if over, "
-        "create a budget warning note. 3) Create a summary in Markor named "
-        "{note_file_name}. 4) Create a calendar reminder 'Review budget'. "
-        "5) Send the budget status via SMS to {phone}."
+        "Open Markor and read the note {budget_file} to get your budget limit. "
+        "Then read the note {shopping_file} to see what items to buy and their prices. "
+        "Calculate the total cost. "
+        "If total cost is within the budget, go to Pro Expense and add these purchases. "
+        "If total cost exceeds the budget, DO NOT add purchases. "
+        "Instead create a warning note 'over_budget_warning.txt' in Markor. "
+        "Finally, send an SMS to {phone} with the budget status."
     )
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
@@ -880,20 +901,64 @@ class BudgetCheckBeforePurchase(task_eval.TaskEval):
         _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
 
+        # Pre-create budget file in Markor
+        budget = self.params["budget_limit"]
+        adb_utils.issue_generic_request(
+            ["shell", "mkdir", "-p", device_constants.MARKOR_DATA],
+            env.controller,
+        )
+        budget_path = f"{device_constants.MARKOR_DATA}/{self.params['budget_file']}"
+        posix_budget = file_utils.convert_to_posix_path("", budget_path)
+        adb_utils.issue_generic_request(
+            ["shell", "echo", f"Budget Limit: ${budget}", ">", posix_budget],
+            env.controller,
+        )
+
+        # Pre-create shopping list file in Markor
+        items = self.params["shopping_items"]  # List of (name, price) tuples
+        shopping_content = "Shopping List:\n" + "\n".join(
+            f"- {name}: ${price}" for name, price in items
+        )
+        shopping_path = f"{device_constants.MARKOR_DATA}/{self.params['shopping_file']}"
+        posix_shopping = file_utils.convert_to_posix_path("", shopping_path)
+        adb_utils.issue_generic_request(
+            ["shell", "echo", "'" + shopping_content + "'", ">", posix_shopping],
+            env.controller,
+        )
+
     def is_successful(self, env: interface.AsyncEnv) -> float:
         super().is_successful(env)
-        note = _check_file_contains(
-            env, self.params["note_file_name"],
-            device_constants.MARKOR_DATA,
-            ["budget"],
-        )
-        cal = _check_calendar_has_event(env, keyword="Review")
+        # Determine expected behavior based on budget vs total
+        total = self.params["price1"] + self.params["price2"] + self.params["price3"]
+        budget = self.params["budget_limit"]
+        should_buy = total <= budget
+
+        # Check SMS (always expected)
         sms = _check_sms_sent(
             env, self.params["phone"], "budget", time_mins=60,
         )
-        if not note or not cal or not sms:
-            print(f"\n[FAIL DETAILS] note={note}, calendar={cal}, sms={sms}")
-        return (note + cal + sms) / 3.0
+
+        if should_buy:
+            # Check summary note exists
+            note = _check_file_contains(
+                env, self.params["note_file_name"],
+                device_constants.MARKOR_DATA,
+                ["budget"],
+            )
+            cal = _check_calendar_has_event(env, keyword="Review")
+            if not note or not cal or not sms:
+                print(f"\n[FAIL DETAILS] note={note}, calendar={cal}, sms={sms}")
+            return (note + cal + sms) / 3.0
+        else:
+            # Check warning note exists
+            warn = _check_file_contains(
+                env, "over_budget_warning.txt",
+                device_constants.MARKOR_DATA,
+                ["over", "budget"],
+            )
+            if not warn or not sms:
+                print(f"\n[FAIL DETAILS] warning_note={warn}, sms={sms}")
+            return (warn + sms) / 2.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
@@ -907,10 +972,21 @@ class BudgetCheckBeforePurchase(task_eval.TaskEval):
             user_data_generation.generate_random_string(6).title(),
         ]
         prices = [round(random.uniform(20, 100), 2) for _ in range(3)]
-        budget = round(sum(prices) * 1.5, 2)  # Set budget above purchases
+        total = sum(prices)
+        # 50% chance budget is enough, 50% chance it's not
+        if random.random() < 0.5:
+            budget = round(total * 1.5, 2)  # Budget is enough
+        else:
+            budget = round(total * 0.5, 2)  # Budget is NOT enough
+
         note_name = f"budget_{user_data_generation.generate_random_string(6)}.txt"
+        budget_file = f"my_budget_{user_data_generation.generate_random_string(6)}.txt"
+        shopping_file = f"shopping_list_{user_data_generation.generate_random_string(6)}.txt"
         return {
+            "budget_file": budget_file,
+            "shopping_file": shopping_file,
             "budget_limit": budget,
+            "shopping_items": list(zip(items, prices)),  # Hidden from Goal
             "item1": items[0], "item2": items[1], "item3": items[2],
             "price1": prices[0], "price2": prices[1], "price3": prices[2],
             "phone": _generate_random_phone(),
@@ -1074,7 +1150,7 @@ class WeeklyMealPrep(task_eval.TaskEval):
 
 
 class HomeRenovationProject(task_eval.TaskEval):
-    """Task: Home renovation tracking - task list, schedule, expenses, contacts, SMS."""
+    """LDP Task: Check Calendar load, decide full or partial renovation."""
 
     app_names = ("markor", "simple calendar pro", "pro expense",
                  "simple contacts pro", "simple sms messenger")
@@ -1104,35 +1180,65 @@ class HomeRenovationProject(task_eval.TaskEval):
         ],
     }
     template = (
-        "You are doing home renovation. 1) Create a task list note in Markor "
-        "named {note_file_name} with tasks: {task1}, {task2}, {task3}. "
-        "2) Schedule each task in Simple Calendar Pro: {task1} on {date1}, "
-        "{task2} on {date2}, {task3} on {date3}. 3) Add expenses in Pro Expense: "
-        "{task1} ${paint_cost}, {task2} ${floor_cost}, {task3} ${plumb_cost}. "
-        "4) Add worker contact '{worker_name}' with phone {worker_phone}. "
-        "5) Send renovation progress via SMS to {phone}."
+        "You are doing home renovation. First, open Calendar and count how many "
+        "events you already have scheduled this month. "
+        "If you have more than 5 events (you are busy): "
+        "Only add the most urgent task '{task1}' to Pro Expense and Markor. "
+        "If you have 5 or fewer events (you have time): "
+        "Add all three tasks ({task1}, {task2}, {task3}) to Pro Expense, "
+        "schedule them in Calendar, and create a full task list in Markor "
+        "named {note_file_name}. "
+        "Finally, add worker contact '{worker_name}' with phone {worker_phone} "
+        "and send SMS to {phone}."
     )
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
         _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
+        # Pre-seed Calendar with random events to trigger either branch
+        n_events = self.params["seed_events"]
+        for i in range(n_events):
+            adb_utils.issue_generic_request(
+                ["shell", "content", "insert", "--uri",
+                 "content://com.android.calendar/events",
+                 "--bind", f"title:s:Preset Event {i+1}",
+                 "--bind", f"dtstart:i:{random.randint(1700000000000, 1800000000000)}",
+                 "--bind", f"dtend:i:{random.randint(1700000000000, 1800000000000)}"],
+                env.controller,
+            )
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
         super().is_successful(env)
-        note = _check_file_contains(
-            env, self.params["note_file_name"],
-            device_constants.MARKOR_DATA,
-            [self.params["task1"], self.params["task2"],
-             self.params["task3"]],
-        )
-        cal = _check_calendar_has_event(env, keyword=self.params["task1"])
-        sms = _check_sms_sent(
-            env, self.params["phone"], self.params["task1"], time_mins=60,
-        )
-        if not note or not cal or not sms:
-            print(f"\n[FAIL DETAILS] note={note}, calendar={cal}, sms={sms}")
-        return (note + cal + sms) / 3.0
+        seed_events = self.params["seed_events"]
+        should_do_all = seed_events <= 5
+
+        if should_do_all:
+            note = _check_file_contains(
+                env, self.params["note_file_name"],
+                device_constants.MARKOR_DATA,
+                [self.params["task1"], self.params["task2"],
+                 self.params["task3"]],
+            )
+            cal = _check_calendar_has_event(env, keyword=self.params["task1"])
+            sms = _check_sms_sent(
+                env, self.params["phone"], self.params["task1"], time_mins=60,
+            )
+            if not note or not cal or not sms:
+                print(f"\n[FAIL DETAILS] full mode: note={note}, calendar={cal}, sms={sms}")
+            return (note + cal + sms) / 3.0
+        else:
+            note = _check_file_contains(
+                env, self.params["note_file_name"],
+                device_constants.MARKOR_DATA,
+                [self.params["task1"]],
+            )
+            sms = _check_sms_sent(
+                env, self.params["phone"], self.params["task1"], time_mins=60,
+            )
+            if not note or not sms:
+                print(f"\n[FAIL DETAILS] partial mode: note={note}, sms={sms}")
+            return (note + sms) / 2.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
@@ -1145,6 +1251,7 @@ class HomeRenovationProject(task_eval.TaskEval):
         costs = [round(random.uniform(100, 500), 2) for _ in range(3)]
         worker = user_data_generation.generate_random_string(7).title()
         note_name = f"renovation_{user_data_generation.generate_random_string(6)}.txt"
+        seed_events = random.randint(3, 8)
         return {
             "task1": tasks[0], "task2": tasks[1], "task3": tasks[2],
             "date1": dates[0]["date_str"],
@@ -1156,6 +1263,7 @@ class HomeRenovationProject(task_eval.TaskEval):
             "worker_phone": _generate_random_phone(),
             "phone": _generate_random_phone(),
             "note_file_name": note_name,
+            "seed_events": seed_events,
         }
 
 
