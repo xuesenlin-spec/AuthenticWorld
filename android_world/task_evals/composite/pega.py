@@ -196,12 +196,14 @@ def _check_file_contains(
                 env.controller,
             )
             content = res.generic.output.decode().replace("\r", "").strip()
+            print(f"[FILE CHECK] Found '{name}', content='{content[:100]}...'")
             return all(sub in content for sub in required_substrings)
     # Also try fuzzy filename matching for mangled names
     ls_res = adb_utils.issue_generic_request(
         ["shell", "ls", dir_path], env.controller,
     )
     files = ls_res.generic.output.decode().replace("\r", "").strip().split("\n")
+    print(f"[FILE CHECK] dir={dir_path}, files={files}")
     base = file_name.replace(".txt", "").replace(".md", "")
     for f in files:
         f = f.strip()
@@ -212,6 +214,7 @@ def _check_file_contains(
                 env.controller,
             )
             content = res.generic.output.decode().replace("\r", "").strip()
+            print(f"[FILE CHECK] Fuzzy match '{f}', content='{content[:100]}...'")
             return all(sub in content for sub in required_substrings)
     return False
 
@@ -1733,40 +1736,28 @@ class SmallBusinessDailyOperations(task_eval.TaskEval):
 def _check_calendar_has_event(env, keyword: str) -> bool:
     """Check if the calendar has an event matching the keyword.
 
-    Tries two approaches:
-    1. Pull the DB file from device and query locally (primary)
-    2. Query via content provider as fallback
+    Uses the original AndroidWorld sqlite_utils to pull and query the DB,
+    which handles permissions and DB structure more robustly.
     """
-    db_path = "/data/data/com.simplemobiletools.calendar.pro/databases/events.db"
     try:
-        import tempfile, sqlite3, os
-        tmpdir = tempfile.mkdtemp()
-        local_db = os.path.join(tmpdir, "events.db")
-        env.controller.pull_file(db_path, local_db)
-        conn = sqlite3.connect(local_db)
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT title FROM events WHERE title LIKE ?",
-            ("%" + keyword + "%",)
-        )
-        rows = cursor.fetchall()
-        conn.close()
-        os.unlink(local_db)
-        os.rmdir(tmpdir)
-        if any(keyword.lower() in row[0].lower() for row in rows if row[0]):
-            return True
-    except Exception:
-        pass
+        from android_world.task_evals.single.calendar import calendar_utils
+        from android_world.task_evals.utils import sqlite_schema_utils
+        from android_world.task_evals.utils import sqlite_utils
 
-    # Fallback: query via content provider
-    try:
-        res = adb_utils.issue_generic_request(
-            ["shell", "content", "query", "--uri",
-             "content://com.android.calendar/events",
-             "--projection", "title"],
-            env.controller,
+        rows = sqlite_utils.get_rows_from_remote_device(
+            calendar_utils.EVENTS_TABLE,
+            calendar_utils.DB_PATH,
+            sqlite_schema_utils.CalendarEvent,
+            env,
         )
-        output = res.generic.output.decode().replace("\r", "")
-        return keyword.lower() in output.lower()
-    except Exception:
+
+        for row in rows:
+            if hasattr(row, "title") and row.title:
+                if keyword.lower() in row.title.lower():
+                    print(f"[CALENDAR CHECK] Found matching event: {row.title}")
+                    return True
+        print(f"[CALENDAR CHECK] No matching event found in {len(rows)} rows")
+        return False
+    except Exception as e:
+        print(f"[CALENDAR CHECK] Failed using sqlite_utils: {e}")
         return False
