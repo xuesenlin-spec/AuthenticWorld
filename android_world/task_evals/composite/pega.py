@@ -266,6 +266,9 @@ class BusinessTripPlanning(task_eval.TaskEval):
             env, self.params["phone"], sms_body, time_mins=60,
         )
         scores = [calendar_success, markor_success, sms_success]
+        if any(not s for s in scores):
+            print(f"\n[FAIL DETAILS] calendar={calendar_success}, "
+                  f"markor={markor_success}, sms={sms_success}")
         return sum(scores) / len(scores)
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -336,6 +339,8 @@ class ExpenseReimbursement(task_eval.TaskEval):
         sms_success = _check_sms_sent(
             env, self.params["phone"], sms_body, time_mins=60,
         )
+        if not note_success or not sms_success:
+            print(f"\n[FAIL DETAILS] note={note_success}, sms={sms_success}")
         return (note_success + sms_success) / 2.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -405,6 +410,8 @@ class PartyPlanning(task_eval.TaskEval):
         sms = _check_sms_sent(
             env, self.params["guest_phone"], "invited", time_mins=60,
         )
+        if not cal or not note or not sms:
+            print(f"\n[FAIL DETAILS] calendar={cal}, note={note}, sms={sms}")
         return (cal + note + sms) / 3.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -480,6 +487,8 @@ class MedicalAppointmentWorkflow(task_eval.TaskEval):
         sms = _check_sms_sent(
             env, self.params["family_phone"], "appointment", time_mins=60,
         )
+        if not note or not cal or not sms:
+            print(f"\n[FAIL DETAILS] note={note}, calendar={cal}, sms={sms}")
         return (note + cal + sms) / 3.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -559,6 +568,8 @@ class PhotoMemorySharing(task_eval.TaskEval):
         sms = _check_sms_sent(
             env, self.params["phone"], self.params["destination"], time_mins=60,
         )
+        if not note or not cal or not sms:
+            print(f"\n[FAIL DETAILS] note={note}, calendar={cal}, sms={sms}")
         return (note + cal + sms) / 3.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -629,6 +640,9 @@ class NetworkTroubleshooting(task_eval.TaskEval):
         sms = _check_sms_sent(
             env, self.params["phone"], "WiFi", time_mins=60,
         )
+        if not wifi or not bt_off or not note or not sms:
+            print(f"\n[FAIL DETAILS] wifi={wifi}, bt_off={bt_off}, "
+                  f"note={note}, sms={sms}")
         return (wifi + bt_off + note + sms) / 4.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -682,6 +696,8 @@ class CalendarConflictResolution(task_eval.TaskEval):
         sms = _check_sms_sent(
             env, self.params["phone"], "Meeting", time_mins=60,
         )
+        if not cal or not note or not sms:
+            print(f"\n[FAIL DETAILS] calendar={cal}, note={note}, sms={sms}")
         return (cal + note + sms) / 3.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -733,6 +749,8 @@ class StorageSpaceManagement(task_eval.TaskEval):
         sms = _check_sms_sent(
             env, self.params["phone"], "clean", time_mins=60,
         )
+        if not note or not sms:
+            print(f"\n[FAIL DETAILS] note={note}, sms={sms}")
         return (note + sms) / 2.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -784,6 +802,8 @@ class MissedCallFollowUp(task_eval.TaskEval):
         sms = _check_sms_sent(
             env, self.params["phone"], "missed", time_mins=60,
         )
+        if not note or not sms:
+            print(f"\n[FAIL DETAILS] note={note}, sms={sms}")
         return (note + sms) / 2.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -849,6 +869,8 @@ class BudgetCheckBeforePurchase(task_eval.TaskEval):
         sms = _check_sms_sent(
             env, self.params["phone"], "budget", time_mins=60,
         )
+        if not note or not cal or not sms:
+            print(f"\n[FAIL DETAILS] note={note}, calendar={cal}, sms={sms}")
         return (note + cal + sms) / 3.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -928,6 +950,8 @@ class NewJobOnboarding(task_eval.TaskEval):
             env, self.params["hr_phone"], "setup", time_mins=60,
         )
         cal = _check_calendar_has_event(env, keyword="Work Day")
+        if not note or not sms or not cal:
+            print(f"\n[FAIL DETAILS] note={note}, sms={sms}, calendar={cal}")
         return (note + sms + cal) / 3.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -999,6 +1023,8 @@ class WeeklyMealPrep(task_eval.TaskEval):
         sms = _check_sms_sent(
             env, self.params["phone"], self.params["dish1"], time_mins=60,
         )
+        if not note or not sms:
+            print(f"\n[FAIL DETAILS] note={note}, sms={sms}")
         return (note + sms) / 2.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -1082,6 +1108,8 @@ class HomeRenovationProject(task_eval.TaskEval):
         sms = _check_sms_sent(
             env, self.params["phone"], self.params["task1"], time_mins=60,
         )
+        if not note or not cal or not sms:
+            print(f"\n[FAIL DETAILS] note={note}, calendar={cal}, sms={sms}")
         return (note + cal + sms) / 3.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -1159,6 +1187,8 @@ class StudentExamPrep(task_eval.TaskEval):
         sms = _check_sms_sent(
             env, self.params["phone1"], "study", time_mins=60,
         )
+        if not cal or not note or not sms:
+            print(f"\n[FAIL DETAILS] calendar={cal}, note={note}, sms={sms}")
         return (cal + note + sms) / 3.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -1230,6 +1260,8 @@ class FitnessGoalTracking(task_eval.TaskEval):
             env, self.params["coach_phone"], "fitness", time_mins=60,
         )
         cal = _check_calendar_has_event(env, keyword="workout")
+        if not note or not sms or not cal:
+            print(f"\n[FAIL DETAILS] note={note}, sms={sms}, calendar={cal}")
         return (note + sms + cal) / 3.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -1310,6 +1342,8 @@ class TravelItineraryManagement(task_eval.TaskEval):
         sms = _check_sms_sent(
             env, self.params["phone"], self.params["city1"], time_mins=60,
         )
+        if not cal or not note or not sms:
+            print(f"\n[FAIL DETAILS] calendar={cal}, note={note}, sms={sms}")
         return (cal + note + sms) / 3.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -1385,6 +1419,8 @@ class EventPlanningAndCoordination(task_eval.TaskEval):
         sms = _check_sms_sent(
             env, self.params["participant_phone"], "invited", time_mins=60,
         )
+        if not cal or not note or not sms:
+            print(f"\n[FAIL DETAILS] calendar={cal}, note={note}, sms={sms}")
         return (cal + note + sms) / 3.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -1459,6 +1495,8 @@ class ProjectKickoffAndTeamSetup(task_eval.TaskEval):
         sms = _check_sms_sent(
             env, self.params["member_phone"], "project", time_mins=60,
         )
+        if not cal or not note or not sms:
+            print(f"\n[FAIL DETAILS] calendar={cal}, note={note}, sms={sms}")
         return (cal + note + sms) / 3.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -1540,6 +1578,8 @@ class FamilyHealthRecordSetup(task_eval.TaskEval):
         sms = _check_sms_sent(
             env, self.params["spouse_phone"], "health", time_mins=60,
         )
+        if not note or not cal or not sms:
+            print(f"\n[FAIL DETAILS] note={note}, calendar={cal}, sms={sms}")
         return (note + cal + sms) / 3.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -1633,6 +1673,9 @@ class SmallBusinessDailyOperations(task_eval.TaskEval):
             env, self.params["partner_phone"], self.params["item1"], time_mins=60,
         )
         cal = _check_calendar_has_event(env, keyword="Open Shop")
+        if not note or not sms1 or not sms2 or not cal:
+            print(f"\n[FAIL DETAILS] note={note}, sms1={sms1}, "
+                  f"sms2={sms2}, calendar={cal}")
         return (note + sms1 + sms2 + cal) / 4.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
