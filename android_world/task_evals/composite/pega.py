@@ -468,7 +468,7 @@ class PartyPlanning(task_eval.TaskEval):
 
 
 class MedicalAppointmentWorkflow(task_eval.TaskEval):
-    """LDP Task: Read symptoms from Markor, count them, decide appointment type."""
+    """LDP Task: Rules are hidden in a separate file, forcing the agent to read and apply them."""
 
     app_names = ("markor", "simple calendar pro",
                  "simple contacts pro", "simple sms messenger")
@@ -477,6 +477,7 @@ class MedicalAppointmentWorkflow(task_eval.TaskEval):
         "type": "object",
         "properties": {
             "symptom_file": {"type": "string"},
+            "rule_file": {"type": "string"},
             "date": {"type": "string"},
             "time": {"type": "string"},
             "clinic_name": {"type": "string"},
@@ -485,17 +486,16 @@ class MedicalAppointmentWorkflow(task_eval.TaskEval):
             "family_phone": {"type": "string"},
         },
         "required": [
-            "symptom_file", "date", "time", "clinic_name", "doctor_name",
+            "symptom_file", "rule_file", "date", "time", "clinic_name", "doctor_name",
             "clinic_phone", "family_phone",
         ],
     }
     template = (
         "You are not feeling well. Open Markor and read the note "
-        "{symptom_file} which lists your symptoms (one per line). "
-        "Count how many symptoms you have. "
-        "If you have more than 3 symptoms, create a 'Specialist Appointment' "
-        "in Calendar on {date} at {time}. "
-        "If you have 3 or fewer symptoms, create a 'Routine Checkup' instead. "
+        "{symptom_file} which lists your symptoms. "
+        "Then read the note {rule_file} to see the clinic's booking policy. "
+        "Follow the policy strictly to book the correct appointment in Calendar "
+        "(either 'Specialist Appointment' or 'Routine Checkup') on {date} at {time}. "
         "Then add contact 'Dr. {doctor_name}' with phone {clinic_phone} "
         "in Simple Contacts Pro, and send SMS to {family_phone} about your appointment."
     )
@@ -504,22 +504,35 @@ class MedicalAppointmentWorkflow(task_eval.TaskEval):
         super().initialize_task(env)
         _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
-        # Pre-create symptom file in Markor
-        symptoms = self.params["symptoms_list"]
-        content = "\\n".join(symptoms)
-        symptom_path = f"{device_constants.MARKOR_DATA}/{self.params['symptom_file']}"
+
+        # Pre-create files in Markor
         adb_utils.issue_generic_request(
             ["shell", "mkdir", "-p", device_constants.MARKOR_DATA],
             env.controller,
         )
+        # 1. Symptom file
+        symptoms = self.params["symptoms_list"]
+        symptom_content = "\\n".join(symptoms)
+        symptom_path = f"{device_constants.MARKOR_DATA}/{self.params['symptom_file']}"
         adb_utils.issue_generic_request(
-            f"shell echo -e '{content}' > {symptom_path}",
+            f"shell echo -e '{symptom_content}' > {symptom_path}",
+            env.controller,
+        )
+        # 2. Rule file (HIDDEN LOGIC)
+        rule_content = (
+            "Clinic Booking Policy:\\n"
+            "- If patient has MORE than 3 symptoms: Book 'Specialist Appointment'.\\n"
+            "- If patient has 3 or fewer symptoms: Book 'Routine Checkup'."
+        )
+        rule_path = f"{device_constants.MARKOR_DATA}/{self.params['rule_file']}"
+        adb_utils.issue_generic_request(
+            f"shell echo -e '{rule_content}' > {rule_path}",
             env.controller,
         )
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
         super().is_successful(env)
-        # Read symptoms from pre-created file to determine expected behavior
+        # Determine expected behavior based on hidden symptom count
         num_symptoms = len(self.params["symptoms_list"])
         expected_keyword = "Specialist Appointment" if num_symptoms > 3 else "Routine Checkup"
 
@@ -547,9 +560,11 @@ class MedicalAppointmentWorkflow(task_eval.TaskEval):
         doctor = user_data_generation.generate_random_string(6).title()
         clinic = user_data_generation.generate_random_string(8).title() + " Clinic"
         symptom_file = f"my_symptoms_{user_data_generation.generate_random_string(6)}.txt"
+        rule_file = f"clinic_rules_{user_data_generation.generate_random_string(6)}.txt"
         return {
             "symptom_file": symptom_file,
-            "symptoms_list": symptoms,  # Hidden from Goal, used for pre-setup
+            "rule_file": rule_file,
+            "symptoms_list": symptoms,  # Hidden from Goal
             "date": d["date_str"], "time": f"{h:02d}:00",
             "clinic_name": clinic,
             "doctor_name": doctor,
@@ -869,6 +884,7 @@ class BudgetCheckBeforePurchase(task_eval.TaskEval):
         "properties": {
             "budget_file": {"type": "string"},
             "shopping_file": {"type": "string"},
+            "policy_file": {"type": "string"},
             "item1": {"type": "string"},
             "item2": {"type": "string"},
             "item3": {"type": "string"},
@@ -879,19 +895,15 @@ class BudgetCheckBeforePurchase(task_eval.TaskEval):
             "note_file_name": {"type": "string"},
         },
         "required": [
-            "budget_file", "shopping_file",
+            "budget_file", "shopping_file", "policy_file",
             "item1", "item2", "item3",
             "price1", "price2", "price3", "phone", "note_file_name",
         ],
     }
     template = (
-        "You want to buy some items but need to check your budget first. "
-        "Open Markor and read the note {budget_file} to get your budget limit. "
-        "Then read the note {shopping_file} to see what items to buy and their prices. "
-        "Calculate the total cost. "
-        "If total cost is within the budget, go to Pro Expense and add these purchases. "
-        "If total cost exceeds the budget, DO NOT add purchases. "
-        "Instead create a warning note 'over_budget_warning.txt' in Markor. "
+        "You want to buy some items. Open Markor and read three notes: "
+        "{budget_file}, {shopping_file}, and {policy_file}. "
+        "Follow the financial policy strictly to decide what to do. "
         "Finally, send an SMS to {phone} with the budget status."
     )
 
@@ -906,8 +918,6 @@ class BudgetCheckBeforePurchase(task_eval.TaskEval):
             ["shell", "mkdir", "-p", device_constants.MARKOR_DATA],
             env.controller,
         )
-        # Pre-create files using adb_utils
-        budget = self.params["budget_limit"]
         budget_path = f"{device_constants.MARKOR_DATA}/{self.params['budget_file']}"
         adb_utils.issue_generic_request(
             f"shell echo 'Budget Limit: ${budget}' > {budget_path}",
@@ -925,28 +935,41 @@ class BudgetCheckBeforePurchase(task_eval.TaskEval):
             env.controller,
         )
 
+        # Pre-create policy file in Markor (HIDDEN LOGIC)
+        policy_content = (
+            "Financial Policy:\\n"
+            "- Calculate total cost of all items in Shopping List.\\n"
+            "- If Total Cost <= Budget Limit: Add all items to Pro Expense. Create note 'budget_summary.txt'. Send SMS 'Budget OK'.\\n"
+            "- If Total Cost > Budget Limit: DO NOT buy anything. Create note 'over_budget_warning.txt' with 'Warning: Over Budget'. Send SMS 'Need Loan'."
+        )
+        policy_path = f"{device_constants.MARKOR_DATA}/{self.params['policy_file']}"
+        adb_utils.issue_generic_request(
+            f"shell echo -e '{policy_content}' > {policy_path}",
+            env.controller,
+        )
+
     def is_successful(self, env: interface.AsyncEnv) -> float:
         super().is_successful(env)
-        # Determine expected behavior based on budget vs total
         total = self.params["price1"] + self.params["price2"] + self.params["price3"]
         budget = self.params["budget_limit"]
         should_buy = total <= budget
 
         # Check SMS (always expected)
+        expected_sms_keyword = "Budget OK" if should_buy else "Loan"
         sms = _check_sms_sent(
-            env, self.params["phone"], "budget", time_mins=60,
+            env, self.params["phone"], expected_sms_keyword, time_mins=60,
         )
 
         if should_buy:
             # Check summary note exists
             note = _check_file_contains(
-                env, self.params["note_file_name"],
+                env, "budget_summary.txt",
                 device_constants.MARKOR_DATA,
                 ["budget"],
             )
             cal = _check_calendar_has_event(env, keyword="Review")
             if not note or not cal or not sms:
-                print(f"\n[FAIL DETAILS] note={note}, calendar={cal}, sms={sms}")
+                print(f"\n[FAIL DETAILS] buy mode: note={note}, calendar={cal}, sms={sms}")
             return (note + cal + sms) / 3.0
         else:
             # Check warning note exists
@@ -956,7 +979,7 @@ class BudgetCheckBeforePurchase(task_eval.TaskEval):
                 ["over", "budget"],
             )
             if not warn or not sms:
-                print(f"\n[FAIL DETAILS] warning_note={warn}, sms={sms}")
+                print(f"\n[FAIL DETAILS] warn mode: warning_note={warn}, sms={sms}")
             return (warn + sms) / 2.0
 
     def tear_down(self, env: interface.AsyncEnv) -> None:
@@ -981,9 +1004,11 @@ class BudgetCheckBeforePurchase(task_eval.TaskEval):
         note_name = f"budget_{user_data_generation.generate_random_string(6)}.txt"
         budget_file = f"my_budget_{user_data_generation.generate_random_string(6)}.txt"
         shopping_file = f"shopping_list_{user_data_generation.generate_random_string(6)}.txt"
+        policy_file = f"financial_policy_{user_data_generation.generate_random_string(6)}.txt"
         return {
             "budget_file": budget_file,
             "shopping_file": shopping_file,
+            "policy_file": policy_file,
             "budget_limit": budget,
             "shopping_items": list(zip(items, prices)),  # Hidden from Goal
             "item1": items[0], "item2": items[1], "item3": items[2],
@@ -1170,23 +1195,21 @@ class HomeRenovationProject(task_eval.TaskEval):
             "worker_phone": {"type": "string"},
             "phone": {"type": "string"},
             "note_file_name": {"type": "string"},
+            "instruction_file": {"type": "string"},
         },
         "required": [
             "task1", "task2", "task3",
             "date1", "date2", "date3",
             "paint_cost", "floor_cost", "plumb_cost",
             "worker_name", "worker_phone", "phone", "note_file_name",
+            "instruction_file",
         ],
     }
     template = (
-        "You are doing home renovation. First, open Calendar and count how many "
-        "events you already have scheduled this month. "
-        "If you have more than 5 events (you are busy): "
-        "Only add the most urgent task '{task1}' to Pro Expense and Markor. "
-        "If you have 5 or fewer events (you have time): "
-        "Add all three tasks ({task1}, {task2}, {task3}) to Pro Expense, "
-        "schedule them in Calendar, and create a full task list in Markor "
-        "named {note_file_name}. "
+        "You are doing home renovation. First, check the Calendar to see how busy "
+        "you are this month. Then read the note {instruction_file} in Markor "
+        "to see the contractor's scheduling guidelines. "
+        "Follow the guidelines strictly to decide which tasks to schedule. "
         "Finally, add worker contact '{worker_name}' with phone {worker_phone} "
         "and send SMS to {phone}."
     )
@@ -1195,6 +1218,24 @@ class HomeRenovationProject(task_eval.TaskEval):
         super().initialize_task(env)
         _clear_task_app_data(self.app_names, env)
         adb_utils.clear_app_data("com.simplemobiletools.calendar.pro", env.controller)
+
+        # Pre-create instruction file in Markor (HIDDEN LOGIC)
+        adb_utils.issue_generic_request(
+            ["shell", "mkdir", "-p", device_constants.MARKOR_DATA],
+            env.controller,
+        )
+        instruction_content = (
+            "Contractor Scheduling Guidelines:\\n"
+            "- Check how many events are in the Calendar for this month.\\n"
+            "- If there are MORE than 5 events (you are busy): ONLY schedule the most urgent task '{task1}'.\\n"
+            "- If there are 5 or fewer events (you have time): Schedule ALL tasks ({task1}, {task2}, {task3})."
+        )
+        instruction_path = f"{device_constants.MARKOR_DATA}/{self.params['instruction_file']}"
+        adb_utils.issue_generic_request(
+            f"shell echo -e '{instruction_content}' > {instruction_path}",
+            env.controller,
+        )
+
         # Pre-seed Calendar with random events to trigger either branch
         n_events = self.params["seed_events"]
         for i in range(n_events):
@@ -1250,6 +1291,7 @@ class HomeRenovationProject(task_eval.TaskEval):
         costs = [round(random.uniform(100, 500), 2) for _ in range(3)]
         worker = user_data_generation.generate_random_string(7).title()
         note_name = f"renovation_{user_data_generation.generate_random_string(6)}.txt"
+        instruction_file = f"contractor_instructions_{user_data_generation.generate_random_string(6)}.txt"
         seed_events = random.randint(3, 8)
         return {
             "task1": tasks[0], "task2": tasks[1], "task3": tasks[2],
@@ -1262,6 +1304,7 @@ class HomeRenovationProject(task_eval.TaskEval):
             "worker_phone": _generate_random_phone(),
             "phone": _generate_random_phone(),
             "note_file_name": note_name,
+            "instruction_file": instruction_file,
             "seed_events": seed_events,
         }
 
