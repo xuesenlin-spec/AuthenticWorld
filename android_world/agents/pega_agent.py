@@ -47,13 +47,11 @@ class LoopDetector:
         self.history.append((action_type, target))
 
     def is_stuck(self) -> bool:
-        if len(self.history) < self.window * 2:
+        if len(self.history) < self.window:
             return False
-        recent = self.history[-self.window:]
-        older = self.history[-self.window * 2 : -self.window]
-        if not recent or not older:
-            return False
-        return all(r == o for r, o in zip(recent, older))
+        # Trigger if the last N actions are all identical
+        last = self.history[-1]
+        return all(h == last for h in self.history[-self.window:])
 
     def get_problem_description(self) -> str:
         if not self.history:

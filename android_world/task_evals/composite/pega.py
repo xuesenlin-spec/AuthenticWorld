@@ -45,7 +45,7 @@ _APP_NAME_TO_PACKAGE = {
     "simple sms messenger": "com.simplemobiletools.smsmessenger",
     "markor": "net.gsantner.markor",
     "pro expense": "com.arduia.expense",
-    "simple contacts pro": "com.simplemobiletools.contacts.pro",
+    "simple contacts pro": "com.android.contacts",
     "osmand": "net.osmand",
     "simple gallery pro": "com.simplemobiletools.gallery.pro",
     "audio recorder": "com.dimowner.audiorecorder",
@@ -61,12 +61,19 @@ def _clear_task_app_data(app_names: tuple[str, ...], env: interface.AsyncEnv) ->
 
     Clears both internal app data (via pm clear) and external storage files
     (for apps like Markor that store files on shared storage).
+    Checks if package is installed before attempting to clear, to avoid
+    unnecessary retry delays.
     """
     for app_name in app_names:
         pkg = _APP_NAME_TO_PACKAGE.get(app_name.lower().strip())
         if pkg:
             try:
-                adb_utils.clear_app_data(pkg, env.controller)
+                # Check if package is installed before attempting to clear
+                res = adb_utils.issue_generic_request(
+                    f"shell pm list packages {pkg}", env.controller,
+                )
+                if f"package:{pkg}" in res.generic.output.decode():
+                    adb_utils.clear_app_data(pkg, env.controller)
             except Exception:
                 pass  # App may not be installed or may not have data
 
@@ -797,7 +804,7 @@ class BudgetCheckBeforePurchase(task_eval.TaskEval):
 
     app_names = ("pro expense", "markor",
                  "simple calendar pro", "simple sms messenger")
-    complexity = 6.5
+    complexity = 8.0  # 80 steps
     schema = {
         "type": "object",
         "properties": {

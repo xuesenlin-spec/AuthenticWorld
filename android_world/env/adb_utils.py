@@ -138,6 +138,9 @@ _PATTERN_TO_ACTIVITY = immutabledict.immutabledict(
         "simple calendar pro|simple calendar": (
             "com.simplemobiletools.calendar.pro/com.simplemobiletools.calendar.pro.activities.MainActivity"
         ),
+        "calendar": (
+            "com.simplemobiletools.calendar.pro/com.simplemobiletools.calendar.pro.activities.MainActivity"
+        ),
         "simple gallery pro|simple gallery": (
             "com.simplemobiletools.gallery.pro/com.simplemobiletools.gallery.pro.activities.MainActivity"
         ),
