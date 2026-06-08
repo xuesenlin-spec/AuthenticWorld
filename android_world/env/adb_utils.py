@@ -96,7 +96,7 @@ _PATTERN_TO_ACTIVITY = immutabledict.immutabledict(
             "com.google.android.contacts/com.android.contacts.activities.PeopleActivity"
         ),
         "simple contacts pro": (
-            "com.simplemobiletools.contacts.pro/com.simplemobiletools.contacts.pro.activities.MainActivity"
+            "com.android.contacts/com.android.contacts.activities.PeopleActivity"
         ),
         "facebook|fb": "com.facebook.katana/com.facebook.katana.LoginActivity",
         "whatsapp|wa": "com.whatsapp/com.whatsapp.Main",
@@ -1015,6 +1015,16 @@ def clear_app_data(
     Returns:
       adb status.
     """
+    # Check if package is installed first
+    try:
+        check_result = issue_generic_request(
+            ["shell", "pm", "path", package_name], env, timeout_sec=5.0,
+        )
+        if "package:" not in check_result.generic.output.decode():
+            return adb_pb2.AdbResponse()  # Not installed, skip silently
+    except errors.AdbControllerError:
+        return adb_pb2.AdbResponse()  # Not installed, skip silently
+
     try:
         return issue_generic_request(["shell", "pm", "clear", package_name], env)
     except errors.AdbControllerError as exc:

@@ -1,0 +1,141 @@
+\section{Method}
+
+% ... (前面已有的 Method 子节，如 Overall Framework、PegaAgent 概述等) ...
+
+\subsection{Long-chain Implicit Decision Mechanism}
+\label{subsec:lidm}
+
+\subsubsection{Motivation}
+
+Long-horizon GUI agent tasks often require cross-app reasoning where critical
+decision-making information is \textit{implicit}---not stated in the task goal,
+but scattered across files, screens, or app states that the agent must
+discover and read on its own. We define such problems as
+\textbf{Long-chain Implicit Decision Problems} (LIDPs): tasks where the agent
+must (1) navigate multiple apps to gather implicit information, (2) reason over
+this information using rules that are also not part of the goal, and (3) make a
+correct downstream decision based on the gathered facts.
+
+Consider the \textit{MedicalAppointmentWorkflow} task: the agent must read a
+symptom note, read a clinic booking policy (both hidden from the goal), count
+the symptoms, and decide whether to book a ``Specialist Appointment''
+($>3$ symptoms) or a ``Routine Checkup'' ($\leq 3$ symptoms). In our
+experiments, baseline agents fail at Step 18 (filling the appointment title)
+because the symptom count extracted at Step 10 is lost by the time the
+decision is made. The root cause is that the agent's memory consists solely
+of natural-language history summaries, which discard structured facts during
+compression.
+
+\subsubsection{Design Principles}
+
+The mechanism must satisfy three constraints:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Generality.} The mechanism must not rely on task-specific
+    schemas or hand-crafted extraction rules. It should work across all LIDPs
+    in the benchmark.
+    \item \textbf{Timeliness.} Information must be captured \textit{when it is
+    visible}, not retrieved retroactively after it is lost.
+    \item \textbf{Goal-grounded.} What to remember should be determined by the
+    agent's own reasoning about which facts will be needed later to achieve
+    the goal.
+\end{enumerate}
+
+\subsubsection{Mechanism Overview}
+
+We introduce the \textbf{Long-chain Implicit Decision Mechanism} (LIDM),
+an explicit working memory system that operates in three phases at every
+agent step:
+
+\begin{enumerate}[leftmargin=*,noitemsep,topsep=2pt]
+    \item \textbf{Goal-Aware Memory Prompt (GAMP).} Injected into the action
+    selection prompt, instructing the LLM to identify and record facts from the
+    current screen that will be needed later.
+    \item \textbf{Working Memory Context (WMC).} Injects all previously recorded
+    facts into the prompt so the agent can use them for downstream decisions.
+    \item \textbf{Fact Parsing and Storage (FPS).} Parses the LLM's structured
+    memory output and persists it into a \texttt{WorkingMemory} store.
+\end{enumerate}
+
+\paragraph{Goal-Aware Memory Prompt.}
+At every step $t$, the action prompt $P_t^{\text{action}}$ is extended with:
+
+\begin{lstlisting}[basicstyle=\small\ttfamily, breaklines=true,
+                   frame=single, xleftmargin=10pt]
+--- Goal-Aware Memory ---
+Your overall goal is: {goal}
+Look at the current screen carefully. Based on your goal,
+is there any specific information here (numbers, names,
+dates, file contents, rules, or decisions) that you will
+need LATER to complete the goal?
+If yes, record it using: [REMEMBER: key=value, key2=value2]
+If nothing needs to be remembered, you can skip this.
+\end{lstlisting}
+
+The LLM answers this inline, before producing its action. Crucially, this
+happens \textit{while the information is still visible on screen}, not
+after the agent navigates away.
+
+\paragraph{Working Memory Context.}
+The \texttt{WorkingMemory} store $\mathcal{M}_t$ at step $t$ contains all
+facts recorded in previous steps:
+
+\[
+\mathcal{M}_t = \bigcup_{i=1}^{t-1} \mathcal{F}_i,
+\qquad
+\mathcal{F}_i = \{(k, v) \mid \text{extracted from step } i\}.
+\]
+
+The formatted memory text is injected into the action prompt as:
+
+\begin{lstlisting}[basicstyle=\small\ttfamily, breaklines=true,
+                   frame=single, xleftmargin=10pt]
+--- Your Working Memory ---
+  [Step 3] symptom_count = 2
+  [Step 5] booking_rule = >3 -> Specialist
+Use these facts when making decisions.
+\end{lstlisting}
+
+\paragraph{Fact Parsing and Storage.}
+After the LLM produces its output $O_t$, a regular expression extracts all
+\texttt{[REMEMBER: ...]} blocks. Each comma-separated \texttt{key=value} pair
+is parsed into a dictionary and appended to $\mathcal{M}$:
+
+\[
+\mathcal{F}_t = \texttt{parse\_re}(O_t, \texttt{\[REMEMBER:\s*(.*?)\]}).
+\]
+
+\subsubsection{Integration with PegaAgent}
+
+LIDM is fully integrated into PegaAgent's \texttt{step()} loop. The prompt
+assembly at each step is:
+
+\[
+P_t = P_t^{\text{T3A}} \oplus P_t^{\text{loop}} \oplus P_t^{\text{WMC}}
+\oplus P_t^{\text{GAMP}},
+\]
+
+where $\oplus$ denotes string concatenation, $P_t^{\text{T3A}}$ is the base
+T3A action prompt, $P_t^{\text{loop}}$ is the loop-detection notification
+(if triggered), $P_t^{\text{WMC}}$ is the working memory context, and
+$P_t^{\text{GAMP}}$ is the goal-aware memory instruction.
+
+The \texttt{WorkingMemory} store is initialized at agent construction and
+cleared on reset, ensuring no cross-task contamination. The mechanism adds
+one lightweight LLM inference step per turn (the GAMP is part of the same
+prompt, not a separate call), incurring negligible overhead.
+
+\subsubsection{Why This Works for All LIDPs}
+
+LIDM does not presuppose \textit{what} to remember, \textit{when} to remember
+it, or \textit{when} to use it. The LLM determines all three dynamically:
+\begin{itemize}[leftmargin=*,noitemsep,topsep=2pt]
+    \item \textit{What:} The LLM identifies relevant facts based on the goal.
+    \item \textit{When to record:} Every step triggers the GAMP, so any
+    visible information can be captured.
+    \item \textit{When to use:} The WMC is injected into every step's prompt,
+    so recorded facts are always available for decision-making.
+\end{itemize}
+
+This design converts implicit, lossy memory (history summaries) into explicit,
+structured facts that persist across app boundaries and step transitions---the
+core capability required for long-chain implicit decision problems.

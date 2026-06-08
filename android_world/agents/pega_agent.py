@@ -21,8 +21,8 @@ from typing import Any
 from android_world.agents import agent_utils
 from android_world.agents import base_agent
 from android_world.agents import infer
+from android_world.agents import m3a
 from android_world.agents import m3a_utils
-from android_world.agents import t3a
 from android_world.env import adb_utils
 from android_world.env import interface
 from android_world.env import json_action
@@ -32,7 +32,7 @@ from android_world.env import representation_utils
 # Loop Detection
 # ---------------------------------------------------------------------------
 
-LOOP_DETECTION_THRESHOLD = 3
+LOOP_DETECTION_THRESHOLD = 6
 MAX_REFLECTIONS = 3
 
 
@@ -169,16 +169,71 @@ LOOP_NOTIFY_PROMPT = (
 
 
 # ---------------------------------------------------------------------------
+# Goal-Aware Working Memory
+# ---------------------------------------------------------------------------
+
+GOAL_AWARE_MEMORY_PROMPT = (
+    "\n\n--- Goal-Aware Memory ---\n"
+    "Your overall goal is: {goal}\n"
+    "Look at the current screen carefully. Based on your goal, is there any "
+    "specific information here (numbers, names, dates, file contents, rules, "
+    "or decisions) that you will need LATER to complete the goal?\n"
+    "If yes, record it using: [REMEMBER: key=value, key2=value2]\n"
+    "If nothing needs to be remembered, you can skip this.\n"
+)
+
+WORKING_MEMORY_CONTEXT = (
+    "\n\n--- Your Working Memory (facts recorded from previous steps) ---\n"
+    "{memory_text}\n"
+    "Use these facts when making decisions.\n"
+)
+
+FEYNMAN_VERIFY_PROMPT = (
+    "\n\n--- Feynman Self-Check ---\n"
+    "Before finalizing your action, explain simply (in one sentence):\n"
+    "1. What exactly is at the index you selected? (e.g., 'a Button labeled "
+    "'Submit'', 'a text field showing the number 5')\n"
+    "2. Does interacting with this element achieve your goal? Why?\n"
+    "3. If you are unsure or it doesn't match, what should you click instead?\n"
+    "If the selected index is correct, proceed with your Action as usual.\n"
+    "If NOT, output 'Corrected Action' with the right JSON after your "
+    "explanation.\n"
+)
+
+
+class WorkingMemory:
+    """Stores facts extracted by the LLM during task execution."""
+
+    def __init__(self):
+        self.facts = []  # list of (step_num, dict) tuples
+
+    def add(self, step_num: int, fact_dict: dict[str, str]) -> None:
+        self.facts.append((step_num, fact_dict))
+
+    def get_text(self) -> str:
+        if not self.facts:
+            return "(empty)"
+        lines = []
+        for step, facts in self.facts:
+            for k, v in facts.items():
+                lines.append(f"  [Step {step}] {k} = {v}")
+        return "\n".join(lines)
+
+    def clear(self) -> None:
+        self.facts = []
+
+
+# ---------------------------------------------------------------------------
 # PegaAgent
 # ---------------------------------------------------------------------------
 
-class PegaAgent(t3a.T3A):
-    """PegaAgent: T3A with LLM-controlled Fast-Path and loop notification."""
+class PegaAgent(m3a.M3A):
+    """PegaAgent: M3A with LLM-controlled Fast-Path and loop notification."""
 
     def __init__(
         self,
         env: interface.AsyncEnv,
-        llm: infer.LlmWrapper,
+        llm: infer.MultimodalLlmWrapper,
         name: str = "PegaAgent",
     ):
         super().__init__(env, llm, name)
@@ -187,12 +242,37 @@ class PegaAgent(t3a.T3A):
         self.max_reflections = MAX_REFLECTIONS
         # Deferred fast_path: set by LLM, checked after action execution
         self.deferred_fast_path = None  # {"button_text": str} or None
+        # Goal-aware working memory
+        self.working_memory = WorkingMemory()
 
     def reset(self, go_home_on_reset: bool = False):
         super().reset(go_home_on_reset)
         self.loop_detector = LoopDetector(window=LOOP_DETECTION_THRESHOLD)
         self.reflection_count = 0
         self.deferred_fast_path = None
+        self.working_memory = WorkingMemory()
+
+    def _format_working_memory_context(self) -> str:
+        """Format working memory for injection into the action prompt."""
+        memory_text = self.working_memory.get_text()
+        return WORKING_MEMORY_CONTEXT.format(memory_text=memory_text)
+
+    def _extract_and_save_remembered_facts(self, step_num: int, text: str) -> None:
+        """Parse [REMEMBER: key=value, ...] from LLM output and save to memory."""
+        pattern = r'\[REMEMBER:\s*(.*?)\]'
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        for match in matches:
+            fact_dict = {}
+            # Split by comma, parse key=value pairs
+            for pair in match.split(','):
+                pair = pair.strip()
+                if '=' in pair:
+                    key, _, value = pair.partition('=')
+                    fact_dict[key.strip()] = value.strip()
+            if fact_dict:
+                self.working_memory.add(step_num, fact_dict)
+                for k, v in fact_dict.items():
+                    print(f"[MEMORY] Step {step_num}: {k} = {v}")
 
     def _execute_action_and_record(
         self, converted_action, ui_elements, step_data, logical_screen_size
@@ -278,12 +358,14 @@ class PegaAgent(t3a.T3A):
 
     def step(self, goal: str) -> base_agent.AgentInteractionResult:
         step_data = {
-            "before_screenshot": None,
-            "after_screenshot": None,
-            "before_element_list": None,
-            "after_element_list": None,
+            "raw_screenshot": None,
+            "before_screenshot_with_som": None,
+            "after_screenshot_with_som": None,
+            "before_ui_elements": [],
             "action_prompt": None,
             "action_output": None,
+            "action_output_json": None,
+            "action_reason": None,
             "action_raw_response": None,
             "summary_prompt": None,
             "summary": None,
@@ -299,19 +381,29 @@ class PegaAgent(t3a.T3A):
         else:
             print(f"----------step {step_num}")
 
-        _t = time.time()
         state = self.get_post_transition_state()
-        print(
-            f"[TIMING] get_post_transition_state (before LLM): {time.time()-_t:.2f}s"
-        )
         logical_screen_size = self.env.logical_screen_size
+        orientation = self.env.orientation
+        physical_frame_boundary = self.env.physical_frame_boundary
 
-        ui_elements = state.ui_elements
-        before_element_list = t3a._generate_ui_elements_description_list_full(
-            ui_elements, logical_screen_size
+        before_ui_elements = state.ui_elements
+        step_data["before_ui_elements"] = before_ui_elements
+        before_ui_elements_list = m3a._generate_ui_elements_description_list(
+            before_ui_elements, logical_screen_size
         )
-        step_data["before_screenshot"] = state.pixels.copy()
-        step_data["before_element_list"] = ui_elements
+        step_data["raw_screenshot"] = state.pixels.copy()
+        before_screenshot = state.pixels.copy()
+        for index, ui_element in enumerate(before_ui_elements):
+            if m3a_utils.validate_ui_element(ui_element, logical_screen_size):
+                m3a_utils.add_ui_element_mark(
+                    before_screenshot,
+                    ui_element,
+                    index,
+                    logical_screen_size,
+                    physical_frame_boundary,
+                    orientation,
+                )
+        step_data["before_screenshot_with_som"] = before_screenshot.copy()
 
         # --- Check for loop and add notification to prompt ---
         history_summaries = [
@@ -324,17 +416,32 @@ class PegaAgent(t3a.T3A):
             print(f"\n[LOOP DETECTED] {problem}")
             loop_notify = LOOP_NOTIFY_PROMPT.format(problem=problem)
 
-        # Build action prompt
-        action_prompt = t3a._action_selection_prompt(
+        # Build action prompt (M3A style)
+        action_prompt = m3a._action_selection_prompt(
             goal,
             history_summaries,
-            before_element_list,
+            before_ui_elements_list,
             self.additional_guidelines,
         ) + loop_notify
 
+        # Inject working memory context (facts from previous steps)
+        action_prompt += self._format_working_memory_context()
+
+        # Inject goal-aware memory instruction (prompt to record new facts)
+        action_prompt += GOAL_AWARE_MEMORY_PROMPT.format(goal=goal)
+
+        # Inject Feynman self-verification instruction
+        action_prompt += FEYNMAN_VERIFY_PROMPT
+
         step_data["action_prompt"] = action_prompt
         _t = time.time()
-        action_output, is_safe, raw_response = self.llm.predict(action_prompt)
+        action_output, is_safe, raw_response = self.llm.predict_mm(
+            action_prompt,
+            [
+                step_data["raw_screenshot"],
+                before_screenshot,
+            ],
+        )
         print(f"[TIMING] LLM action selection: {time.time()-_t:.2f}s")
 
         if is_safe is False:
@@ -349,7 +456,22 @@ class PegaAgent(t3a.T3A):
         step_data["action_output"] = action_output
         step_data["action_raw_response"] = raw_response
 
+        # Extract and save remembered facts from LLM output
+        self._extract_and_save_remembered_facts(step_num, action_output)
+
         reason, action = m3a_utils.parse_reason_action_output(action_output)
+
+        # --- Feynman self-check: look for "Corrected Action" in output ---
+        corrected_action_match = re.search(
+            r'Corrected Action:\s*(\{.*\})', action_output, re.DOTALL
+        )
+        if corrected_action_match:
+            corrected = corrected_action_match.group(1).strip()
+            print(f"[FEYNMAN CORRECTION] Found corrected action: {corrected}")
+            action = corrected
+        else:
+            # Feynman check passed without correction
+            print("[FEYNMAN CHECK] Passed (no correction needed).")
 
         if (not reason) or (not action):
             print("Action prompt output is not in the correct format.")
@@ -362,6 +484,7 @@ class PegaAgent(t3a.T3A):
 
         print("Reason: " + reason)
         print("Action: " + action)
+        step_data["action_reason"] = reason
 
         # --- Parse action and handle fast_path BEFORE creating JSONAction ---
         try:
@@ -382,7 +505,7 @@ class PegaAgent(t3a.T3A):
             button_text = action_dict.get("button_text", None)
 
             if mode == "next_step":
-                self._handle_fast_path_next_step(ui_elements, button_text)
+                self._handle_fast_path_next_step(before_ui_elements, button_text)
                 # Don't execute a normal action, just record and continue
                 step_data["summary"] = f"[FAST-PATH next_step] Deferred handler set for '{button_text}'."
                 self.history.append(step_data)
@@ -390,7 +513,7 @@ class PegaAgent(t3a.T3A):
 
             elif mode == "immediate":
                 handled, summary = self._handle_fast_path_immediate(
-                    ui_elements, step_data, button_text,
+                    before_ui_elements, step_data, button_text,
                 )
                 step_data["summary"] = summary
                 self.history.append(step_data)
@@ -398,27 +521,50 @@ class PegaAgent(t3a.T3A):
                     return base_agent.AgentInteractionResult(False, step_data)
                 # Get new state after fast_path
                 state = self.get_post_transition_state()
-                ui_elements = state.ui_elements
-                before_element_list = t3a._generate_ui_elements_description_list_full(
-                    ui_elements, logical_screen_size,
+                before_ui_elements = state.ui_elements
+                before_ui_elements_list = m3a._generate_ui_elements_description_list(
+                    before_ui_elements, logical_screen_size,
                 )
-                step_data["before_screenshot"] = state.pixels.copy()
-                step_data["before_element_list"] = ui_elements
+                step_data["raw_screenshot"] = state.pixels.copy()
+                before_screenshot = state.pixels.copy()
+                for index, ui_element in enumerate(before_ui_elements):
+                    if m3a_utils.validate_ui_element(ui_element, logical_screen_size):
+                        m3a_utils.add_ui_element_mark(
+                            before_screenshot,
+                            ui_element,
+                            index,
+                            logical_screen_size,
+                            physical_frame_boundary,
+                            orientation,
+                        )
+                step_data["before_screenshot_with_som"] = before_screenshot.copy()
+                step_data["before_ui_elements"] = before_ui_elements
                 # Re-prompt LLM with new state
                 history_summaries = [
                     "Step " + str(i + 1) + ": " + step_info["summary"]
                     for i, step_info in enumerate(self.history)
                 ]
-                action_prompt = t3a._action_selection_prompt(
-                    goal, history_summaries, before_element_list,
+                action_prompt = m3a._action_selection_prompt(
+                    goal, history_summaries, before_ui_elements_list,
                     self.additional_guidelines,
                 )
+                # Inject working memory into fast_path re-prompt too
+                action_prompt += self._format_working_memory_context()
+                action_prompt += GOAL_AWARE_MEMORY_PROMPT.format(goal=goal)
                 step_data["action_prompt"] = action_prompt
                 _t = time.time()
-                action_output, is_safe, raw_response = self.llm.predict(action_prompt)
+                action_output, is_safe, raw_response = self.llm.predict_mm(
+                    action_prompt,
+                    [
+                        step_data["raw_screenshot"],
+                        before_screenshot,
+                    ],
+                )
                 print(f"[TIMING] LLM (after fast_path): {time.time()-_t:.2f}s")
                 if not raw_response:
                     raise RuntimeError("Error calling LLM after fast_path.")
+                # Extract remembered facts from fast_path re-prompt output too
+                self._extract_and_save_remembered_facts(step_num, action_output)
                 reason, action = m3a_utils.parse_reason_action_output(action_output)
                 if (not reason) or (not action):
                     step_data["summary"] = "LLM format error after fast_path."
@@ -435,14 +581,15 @@ class PegaAgent(t3a.T3A):
         # --- Execute normal action ---
         try:
             converted_action = json_action.JSONAction(**action_dict)
+            step_data["action_output_json"] = converted_action
         except Exception as e:
             print("Failed to create JSONAction: " + str(e))
             self.history.append(step_data)
             return base_agent.AgentInteractionResult(False, step_data)
 
-        if converted_action.action_type in ["click", "long-press", "input-text"]:
+        if converted_action.action_type in ["click", "long_press", "input_text", "scroll"]:
             if converted_action.index is not None and converted_action.index >= len(
-                ui_elements
+                before_ui_elements
             ):
                 print("Index out of range.")
                 step_data["summary"] = (
@@ -451,15 +598,6 @@ class PegaAgent(t3a.T3A):
                 )
                 self.history.append(step_data)
                 return base_agent.AgentInteractionResult(False, step_data)
-            else:
-                m3a_utils.add_ui_element_mark(
-                    step_data["before_screenshot"],
-                    ui_elements[converted_action.index],
-                    converted_action.index,
-                    logical_screen_size,
-                    adb_utils.get_physical_frame_boundary(self.env.controller),
-                    adb_utils.get_orientation(self.env.controller),
-                )
 
         if converted_action.action_type == "status":
             if converted_action.goal_status == "infeasible":
@@ -472,30 +610,44 @@ class PegaAgent(t3a.T3A):
             print("Agent answered with: " + converted_action.text)
 
         ok, target_desc = self._execute_action_and_record(
-            converted_action, ui_elements, step_data, logical_screen_size
+            converted_action, before_ui_elements, step_data, logical_screen_size
         )
         if not ok:
             self.history.append(step_data)
             return base_agent.AgentInteractionResult(False, step_data)
 
         # --- Check deferred fast_path: dialog appeared after action? ---
-        state = self.get_post_transition_state()
+        time.sleep(self.wait_after_action_seconds)
+        state = self.env.get_state(wait_to_stabilize=False)
         fp_summary = self._check_and_execute_deferred_fast_path(
             state.ui_elements, step_data, logical_screen_size,
         )
         if fp_summary:
             print(f"[FAST-PATH deferred] {fp_summary}")
             # Re-get state after fast_path
-            state = self.get_post_transition_state()
+            state = self.env.get_state(wait_to_stabilize=False)
 
-        ui_elements = state.ui_elements
-
-        after_element_list = t3a._generate_ui_elements_description_list_full(
-            ui_elements, self.env.logical_screen_size
+        after_ui_elements = state.ui_elements
+        after_ui_elements_list = m3a._generate_ui_elements_description_list(
+            after_ui_elements, logical_screen_size
         )
+        after_screenshot = state.pixels.copy()
+        for index, ui_element in enumerate(after_ui_elements):
+            if m3a_utils.validate_ui_element(ui_element, logical_screen_size):
+                m3a_utils.add_ui_element_mark(
+                    after_screenshot,
+                    ui_element,
+                    index,
+                    logical_screen_size,
+                    physical_frame_boundary,
+                    orientation,
+                )
 
-        step_data["after_screenshot"] = state.pixels.copy()
-        step_data["after_element_list"] = ui_elements
+        m3a_utils.add_screenshot_label(
+            step_data["before_screenshot_with_som"], "before"
+        )
+        m3a_utils.add_screenshot_label(after_screenshot, "after")
+        step_data["after_screenshot_with_som"] = after_screenshot.copy()
 
         summary = f"Action: {action}. Reason: {reason}"
         if fp_summary:

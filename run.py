@@ -21,6 +21,13 @@ command-line flags.
 """
 
 import os
+import sys
+try:
+    import pysqlite3
+    sys.modules['sqlite3'] = pysqlite3
+    print("Successfully patched sqlite3 with pysqlite3-binary (FTS4 Enabled)")
+except ImportError:
+    pass
 
 os.environ["GRPC_VERBOSITY"] = "ERROR"  # Only show errors
 os.environ["GRPC_TRACE"] = ""  # Disable all gRPC tracing
@@ -178,7 +185,9 @@ def _get_agent(
         agent = m3a.M3A(env, infer.Gpt4Wrapper("qwen3.6-plus"))
     # PegaAgent.
     elif _AGENT_NAME.value == "pega_gpt4":
-        agent = pega_agent.PegaAgent(env, infer.Gpt4Wrapper("qwen3.6-plus"))
+        agent = pega_agent.PegaAgent(
+            env, infer.Gpt4Wrapper("qwen3.6-plus", max_retry=5)
+        )
     # SeeAct.
     elif _AGENT_NAME.value == "seeact":
         agent = seeact.SeeAct(env)

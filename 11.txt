@@ -1,0 +1,233 @@
+AudioRecorderRecordAudio pass
+
+AudioRecorderRecordAudioWithFileName pass
+
+BrowserDraw
+
+BrowserMaze pass
+
+BrowserMultiply pass
+
+CameraTakePhoto pass
+
+CameraTakeVideo pass
+
+ClockStopWatchPausedVerify pass
+
+ClockStopWatchRunning pass
+
+ClockTimerEntry pass
+
+ContactsAddContact pass 
+
+ContactsNewContactDraft pass
+
+ExpenseAddMultiple pass
+
+ExpenseAddMultipleFromGallery
+
+ExpenseAddMultipleFromMarkor
+
+ExpenseAddSingle pass
+
+ExpenseDeleteDuplicates pass
+
+ExpenseDeleteDuplicates2 pass
+
+ExpenseDeleteMultiple  pass
+
+ExpenseDeleteMultiple2  pass
+
+ExpenseDeleteSingle pass
+
+FilesDeleteFile  pass
+
+FilesMoveFile pass
+
+MarkorAddNoteHeader
+
+MarkorChangeNoteContent
+
+MarkorCreateFolder
+
+MarkorCreateNote pass
+
+MarkorCreateNoteAndSms pass
+
+MarkorCreateNoteFromClipboard pass
+
+MarkorDeleteAllNotes pass
+
+MarkorDeleteNewestNote pass
+
+MarkorDeleteNote pass
+
+MarkorEditNote
+
+MarkorMergeNotes
+
+MarkorMoveNote pass
+
+MarkorTranscribeReceipt pass
+
+MarkorTranscribeVideo
+
+NotesIsTodo  pass fts4错误，改为用pysqlite3
+
+NotesMeetingAttendeeCount pass
+
+NotesRecipeIngredientCount pass
+
+NotesTodoItemCount pass
+
+OpenAppTaskEval pass
+
+OsmAndFavorite pass
+
+OsmAndMarker
+
+OsmAndTrack
+
+RecipeAddMultipleRecipes pass
+
+RecipeAddMultipleRecipesFromImage
+
+RecipeAddMultipleRecipesFromMarkor
+
+RecipeAddMultipleRecipesFromMarkor2
+
+RecipeAddSingleRecipe pass
+
+RecipeDeleteDuplicateRecipes
+
+RecipeDeleteDuplicateRecipes2
+
+RecipeDeleteDuplicateRecipes3
+
+RecipeDeleteMultipleRecipes
+
+RecipeDeleteMultipleRecipesWithConstraint pass
+
+RecipeDeleteMultipleRecipesWithNoise pass
+
+RecipeDeleteSingleRecipe
+
+RecipeDeleteSingleWithRecipeWithNoise pass
+
+RetroCreatePlaylist pass
+
+RetroPlayingQueue
+
+RetroPlaylistDuration
+
+RetroSavePlaylist pass
+
+SaveCopyOfReceiptTaskEval pass
+
+SimpleCalendarAddOneEvent
+
+SimpleCalendarAddOneEventInTwoWeeks
+
+SimpleCalendarAddOneEventRelativeDay
+
+SimpleCalendarAddOneEventTomorrow pass
+
+SimpleCalendarAddRepeatingEvent pass
+
+SimpleCalendarAnyEventsOnDate pass
+
+SimpleCalendarDeleteEvents
+
+SimpleCalendarDeleteEventsOnRelativeDay
+
+SimpleCalendarDeleteOneEvent pass
+
+SimpleCalendarEventOnDateAtTime pass
+
+SimpleCalendarEventsInNextWeek pass
+
+SimpleCalendarEventsInTimeRange pass
+
+SimpleCalendarEventsOnDate pass
+
+SimpleCalendarFirstEventAfterStartTime pass
+
+SimpleCalendarLocationOfEvent pass
+
+SimpleCalendarNextEvent pass
+
+SimpleCalendarNextMeetingWithPerson pass
+
+SimpleDrawProCreateDrawing pass
+
+SimpleSmsReply pass
+
+SimpleSmsReplyMostRecent pass
+
+SimpleSmsResend pass
+
+SimpleSmsSend pass
+
+SimpleSmsSendClipboardContent pass
+
+SimpleSmsSendReceivedAddress pass
+
+SportsTrackerActivitiesCountForWeek pass
+
+SportsTrackerActivitiesOnDate
+
+SportsTrackerActivityDuration pass
+
+SportsTrackerLongestDistanceActivity pass
+
+SportsTrackerTotalDistanceForCategoryOverInterval pass
+
+SportsTrackerTotalDurationForCategoryThisWeek pass
+
+SystemBluetoothTurnOff pass
+
+SystemBluetoothTurnOffVerify pass
+
+SystemBluetoothTurnOn pass
+
+SystemBluetoothTurnOnVerify pass
+
+SystemBrightnessMax
+
+SystemBrightnessMaxVerify pass
+
+SystemBrightnessMin
+
+SystemBrightnessMinVerify pass
+
+SystemCopyToClipboard pass
+
+SystemWifiTurnOff pass
+
+SystemWifiTurnOffVerify pass
+
+SystemWifiTurnOn pass
+
+SystemWifiTurnOnVerify pass
+
+TasksCompletedTasksForDate
+
+TasksDueNextWeek pass
+
+TasksDueOnDate pass
+
+TasksHighPriorityTasks pass
+
+TasksHighPriorityTasksDueOnDate pass
+
+TasksIncompleteTasksOnDate pass
+
+TurnOffWifiAndTurnOnBluetooth pass
+
+TurnOnWifiAndOpenApp pass
+
+VlcCreatePlaylist pass
+
+VlcCreateTwoPlaylists
+
+CalendarQueryThenSmsAndMarkor  pass

@@ -23,6 +23,7 @@ four capability dimensions:
 """
 
 import random
+import time
 from typing import Any
 
 from android_world.env import adb_utils
@@ -821,7 +822,13 @@ class StorageSpaceManagement(task_eval.TaskEval):
 
 
 class MissedCallFollowUp(task_eval.TaskEval):
-    """Task: Check missed calls, handle contact, send follow-up SMS, log."""
+    """Task: Check missed calls, handle contact, send follow-up SMS, log.
+
+    Exception injection: Airplane mode is enabled at task start, blocking SMS.
+    Agent must detect the network issue, disable airplane mode, retry, and
+    succeed. This tests the agent's ability to handle runtime environment
+    exceptions and recover without being told about the issue in the goal.
+    """
 
     app_names = ("dialer", "simple contacts pro",
                  "simple sms messenger", "markor")
@@ -830,20 +837,48 @@ class MissedCallFollowUp(task_eval.TaskEval):
         "type": "object",
         "properties": {
             "phone": {"type": "string"},
+            "caller_name": {"type": "string"},
             "note_file_name": {"type": "string"},
         },
-        "required": ["phone", "note_file_name"],
+        "required": ["phone", "caller_name", "note_file_name"],
     }
     template = (
-        "You have a missed call. 1) Check the Phone app for missed calls. "
-        "2) Look up or create a contact for the caller. 3) Send an SMS saying "
-        "'Sorry I missed your call' to the caller's number. 4) Log the action "
-        "in Markor note {note_file_name}."
+        "You have a missed call from {caller_name} ({phone}). "
+        "1) Check the Phone app for missed calls. "
+        "2) Look up or create a contact for the caller with the name {caller_name}. "
+        "3) Send an SMS saying 'Sorry I missed your call' to the caller's number. "
+        "4) Log the action in Markor note {note_file_name}."
     )
 
     def initialize_task(self, env: interface.AsyncEnv) -> None:
         super().initialize_task(env)
         _clear_task_app_data(self.app_names, env)
+
+        # Clear existing call log and insert a missed call entry for the target
+        # phone number. type=3 means missed call in Android call log.
+        adb_utils.clear_android_emulator_call_log(env.controller)
+        now_ms = int(time.time() * 1000)
+        adb_utils.issue_generic_request([
+            "shell", "content", "insert", "--uri", "content://call_log/calls",
+            "--bind", f"number:s:{self.params['phone']}",
+            "--bind", "type:i:3",
+            "--bind", f"date:l:{now_ms}",
+        ], env.controller)
+        print(f"[SETUP] Missed call inserted for {self.params['phone']}.")
+
+        # Inject airplane mode exception so SMS sending fails until the agent
+        # fixes the network by disabling airplane mode.
+        # Use both settings put and broadcast to ensure system reacts.
+        adb_utils.issue_generic_request(
+            ["shell", "settings", "put", "global", "airplane_mode_on", "1"],
+            env.controller,
+        )
+        adb_utils.issue_generic_request(
+            "shell am broadcast -a android.intent.action.AIRPLANE_MODE "
+            "--ez state true".split(),
+            env.controller,
+        )
+        print("[EXCEPTION] Airplane mode enabled.")
 
     def is_successful(self, env: interface.AsyncEnv) -> float:
         super().is_successful(env)
@@ -863,12 +898,25 @@ class MissedCallFollowUp(task_eval.TaskEval):
     def tear_down(self, env: interface.AsyncEnv) -> None:
         super().tear_down(env)
         _clear_task_app_data(self.app_names, env)
+        # Restore: disable airplane mode
+        adb_utils.issue_generic_request(
+            ["shell", "settings", "put", "global", "airplane_mode_on", "0"],
+            env.controller,
+        )
+        adb_utils.issue_generic_request(
+            "shell am broadcast -a android.intent.action.AIRPLANE_MODE "
+            "--ez state false".split(),
+            env.controller,
+        )
+        print("[CLEANUP] Airplane mode disabled after task.")
 
     @classmethod
     def generate_random_params(cls) -> dict[str, Any]:
         note_name = f"missed_call_{user_data_generation.generate_random_string(6)}.txt"
+        caller_name = user_data_generation.generate_random_string(8).title()
         return {
             "phone": _generate_random_phone(),
+            "caller_name": caller_name,
             "note_file_name": note_name,
         }
 

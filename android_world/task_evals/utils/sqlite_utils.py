@@ -15,7 +15,14 @@
 """Utility functions for interacting with SQLite database on an Android device."""
 
 import os
-import sqlite3
+
+try:
+    import pysqlite3 as sqlite3
+    print(f"[SQLite] Using pysqlite3 (version {sqlite3.sqlite_version})")
+except ImportError:
+    import sqlite3
+    print(f"[SQLite] Using standard sqlite3 (version {sqlite3.sqlite_version})")
+
 import time
 from typing import Optional, Type
 from android_world.env import adb_utils

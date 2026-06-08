@@ -1,0 +1,118 @@
+  1. AudioRecorderRecordAudio pass
+  2. AudioRecorderRecordAudioWithFileName pass
+  3. BrowserDraw:REFLECT
+  4. BrowserMaze
+  5. BrowserMultiply：点击5次，会触发loop机制
+  6. SimpleCalendarAddOneEvent
+  7. SimpleCalendarAddOneEventInTwoWeeks
+  8. SimpleCalendarAddOneEventRelativeDay
+  9. SimpleCalendarAddOneEventTomorrow
+ 10. SimpleCalendarAddRepeatingEvent
+ 11. SimpleCalendarDeleteEvents
+ 12. SimpleCalendarDeleteEventsOnRelativeDay
+ 13. SimpleCalendarDeleteOneEvent
+ 14. CameraTakePhoto
+ 15. CameraTakeVideo
+ 16. ClockStopWatchPausedVerify
+ 17. ClockStopWatchRunning
+ 18. ClockTimerEntry
+ 19. ContactsAddContact
+ 20. ContactsNewContactDraft
+ 21. ExpenseAddMultiple
+ 22. ExpenseAddMultipleFromGallery
+ 23. ExpenseAddMultipleFromMarkor
+ 24. ExpenseAddSingle
+ 25. ExpenseDeleteDuplicates
+ 26. ExpenseDeleteDuplicates2
+ 27. ExpenseDeleteMultiple
+ 28. ExpenseDeleteMultiple2
+ 29. ExpenseDeleteSingle
+ 30. FilesDeleteFile
+ 31. FilesMoveFile
+ 32. MarkorAddNoteHeader
+ 33. MarkorChangeNoteContent
+ 34. MarkorCreateFolder
+ 35. MarkorCreateNote
+ 36. MarkorCreateNoteFromClipboard
+ 37. MarkorDeleteAllNotes
+ 38. MarkorDeleteNewestNote
+ 39. MarkorDeleteNote
+ 40. MarkorEditNote
+ 41. MarkorMergeNotes
+ 42. MarkorMoveNote
+ 43. MarkorTranscribeReceipt
+ 44. MarkorTranscribeVideo
+ 45. MarkorCreateNoteAndSms
+ 46. OsmAndFavorite
+ 47. OsmAndMarker
+ 48. OsmAndTrack
+ 49. RecipeAddMultipleRecipes
+ 50. RecipeAddMultipleRecipesFromImage
+ 51. RecipeAddMultipleRecipesFromMarkor
+ 52. RecipeAddMultipleRecipesFromMarkor2
+ 53. RecipeAddSingleRecipe
+ 54. RecipeDeleteDuplicateRecipes
+ 55. RecipeDeleteDuplicateRecipes2
+ 56. RecipeDeleteDuplicateRecipes3
+ 57. RecipeDeleteMultipleRecipes
+ 58. RecipeDeleteMultipleRecipesWithConstraint
+ 59. RecipeDeleteMultipleRecipesWithNoise
+ 60. RecipeDeleteSingleRecipe
+ 61. RecipeDeleteSingleWithRecipeWithNoise
+ 62. RetroCreatePlaylist
+ 63. RetroPlayingQueue
+ 64. RetroPlaylistDuration
+ 65. RetroSavePlaylist
+ 66. SimpleDrawProCreateDrawing
+ 67. SaveCopyOfReceiptTaskEval
+ 68. SimpleSmsReply
+ 69. SimpleSmsReplyMostRecent
+ 70. SimpleSmsResend
+ 71. SimpleSmsSend
+ 72. SimpleSmsSendClipboardContent
+ 73. SimpleSmsSendReceivedAddress
+ 74. OpenAppTaskEval
+ 75. SystemBluetoothTurnOff
+ 76. SystemBluetoothTurnOffVerify
+ 77. SystemBluetoothTurnOn
+ 78. SystemBluetoothTurnOnVerify
+ 79. SystemBrightnessMax
+ 80. SystemBrightnessMaxVerify
+ 81. SystemBrightnessMin
+ 82. SystemBrightnessMinVerify
+ 83. SystemCopyToClipboard
+ 84. SystemWifiTurnOff
+ 85. SystemWifiTurnOffVerify
+ 86. SystemWifiTurnOn
+ 87. SystemWifiTurnOnVerify
+ 88. TurnOffWifiAndTurnOnBluetooth
+ 89. TurnOnWifiAndOpenApp
+ 90. CalendarQueryThenSmsAndMarkor
+ 91. VlcCreatePlaylist
+ 92. VlcCreateTwoPlaylists
+ 93. SimpleCalendarEventsOnDate
+ 94. SimpleCalendarNextEvent
+ 95. SimpleCalendarEventOnDateAtTime
+ 96. SimpleCalendarAnyEventsOnDate
+ 97. SimpleCalendarNextMeetingWithPerson
+ 98. SimpleCalendarLocationOfEvent
+ 99. SimpleCalendarEventsInNextWeek
+100. SimpleCalendarFirstEventAfterStartTime
+101. SimpleCalendarEventsInTimeRange
+102. TasksDueOnDate
+103. TasksHighPriorityTasks
+104. TasksHighPriorityTasksDueOnDate
+105. TasksDueNextWeek
+106. TasksCompletedTasksForDate
+107. TasksIncompleteTasksOnDate
+108. SportsTrackerActivitiesOnDate
+109. SportsTrackerActivitiesCountForWeek
+110. SportsTrackerActivityDuration
+111. SportsTrackerLongestDistanceActivity
+112. SportsTrackerTotalDurationForCategoryThisWeek
+113. SportsTrackerTotalDistanceForCategoryOverInterval
+114. NotesRecipeIngredientCount
+115. NotesMeetingAttendeeCount
+116. NotesIsTodo
+117. NotesTodoItemCount
+Total: 117

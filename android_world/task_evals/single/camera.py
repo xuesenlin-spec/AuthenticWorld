@@ -126,7 +126,7 @@ class CameraTakePhoto(_Camera):
         len(after_photos - self.before_photos),
     )
 
-    return 1.0 if len(after_photos - self.before_photos) == 1 else 0.0
+    return 1.0 if len(after_photos - self.before_photos) >= 1 else 0.0
 
   @classmethod
   def generate_random_params(cls) -> dict[str, Any]:

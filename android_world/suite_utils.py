@@ -260,6 +260,11 @@ def _run_task(
     )
   else:
     agent_successful = task_successful if interaction_results.done else 0.0
+    if agent_successful <= 0.5:
+        _log_and_print(
+            '[FAILURE REASON] Task: %s | Score: %.2f | Done: %s',
+            task.name, task_successful, interaction_results.done,
+        )
     _log_and_print(
         '%s; %s',
         'Task Successful ✅' if agent_successful > 0.5 else 'Task Failed ❌',
