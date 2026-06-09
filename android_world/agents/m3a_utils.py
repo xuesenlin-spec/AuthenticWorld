@@ -258,22 +258,44 @@ def parse_reason_action_output(
   Args:
     raw_reason_action_output: Raw string output that supposes to have the format
       'Reason: xxx\nAction:xxx'.
+      Also supports chained actions: 'Reason: xxx\nAction 1: xxx\nAction 2: xxx'.
 
   Returns:
     If parsing successfully, returns reason and action.
+    For chained actions, returns reason and the first action (Action 1).
   """
-  reason_result = re.search(
-      r'Reason:(.*)Action:', raw_reason_action_output, flags=re.DOTALL
-  )
-  reason = reason_result.group(1).strip() if reason_result else None
-  action_result = re.search(
-      r'Action:(.*)', raw_reason_action_output, flags=re.DOTALL
-  )
-  action = action_result.group(1).strip() if action_result else None
-  if action:
-    extracted = extract_json(action)
-    if extracted is not None:
-      action = json.dumps(extracted)
+  # Check for chained actions format first (Action 1: / Action 2:)
+  has_chained = re.search(r'Action\s+\d+\s*:', raw_reason_action_output)
+
+  if has_chained:
+    # Parse chained action format
+    reason_result = re.search(
+        r'Reason:(.*?)Action\s+\d+\s*:', raw_reason_action_output, flags=re.DOTALL
+    )
+    reason = reason_result.group(1).strip() if reason_result else None
+    # Extract Action 1
+    action_result = re.search(
+        r'Action\s+1\s*:(.*)', raw_reason_action_output, flags=re.DOTALL
+    )
+    action = action_result.group(1).strip() if action_result else None
+    if action:
+      extracted = extract_json(action)
+      if extracted is not None:
+        action = json.dumps(extracted)
+  else:
+    # Original single-action format
+    reason_result = re.search(
+        r'Reason:(.*)Action:', raw_reason_action_output, flags=re.DOTALL
+    )
+    reason = reason_result.group(1).strip() if reason_result else None
+    action_result = re.search(
+        r'Action:(.*)', raw_reason_action_output, flags=re.DOTALL
+    )
+    action = action_result.group(1).strip() if action_result else None
+    if action:
+      extracted = extract_json(action)
+      if extracted is not None:
+        action = json.dumps(extracted)
 
   return reason, action
 
