@@ -445,6 +445,17 @@ class PegaAgent(m3a.M3A):
             self.additional_guidelines,
         ) + loop_notify
 
+        # Inject step budget awareness
+        max_steps = self._max_steps or 12
+        remaining = max_steps - step_num
+        action_prompt += (
+            f"\n\n--- Step Budget ---\n"
+            f"You are at Step {step_num} of {max_steps} total steps allowed. "
+            f"{remaining} step(s) remaining.\n"
+            "Plan accordingly: if only 1 step remains, use it to complete the task "
+            "(status:complete) rather than starting a new multi-step operation.\n"
+        )
+
         # Inject working memory context (facts from previous steps)
         action_prompt += self._format_working_memory_context()
 
@@ -674,6 +685,16 @@ class PegaAgent(m3a.M3A):
             self.history.append(step_data)
             return base_agent.AgentInteractionResult(False, step_data)
 
+        # --- Check deferred fast_path: dialog appeared after Action 1? ---
+        time.sleep(self.wait_after_action_seconds)
+        state = self.env.get_state(wait_to_stabilize=False)
+        fp_summary = self._check_and_execute_deferred_fast_path(
+            state.ui_elements, step_data, logical_screen_size,
+        )
+        if fp_summary:
+            print(f"[FAST-PATH deferred] {fp_summary}")
+            state = self.env.get_state(wait_to_stabilize=False)
+
         # --- Execute second chained action if present ---
         if second_action_json:
             time.sleep(3.0)  # 3-second interval between chained actions
@@ -685,7 +706,6 @@ class PegaAgent(m3a.M3A):
                     action2, state.ui_elements, step_data, logical_screen_size
                 )
                 if ok2:
-                    # Re-get state after second action
                     time.sleep(self.wait_after_action_seconds)
                     state = self.env.get_state(wait_to_stabilize=False)
                     fp_summary2 = self._check_and_execute_deferred_fast_path(
@@ -693,6 +713,7 @@ class PegaAgent(m3a.M3A):
                     )
                     if fp_summary2:
                         print(f"[FAST-PATH deferred] {fp_summary2}")
+                        state = self.env.get_state(wait_to_stabilize=False)
                     summary = f"Action 1: {action}. Action 2: {second_action_json}. Reason: {reason}"
                     if fp_summary2:
                         summary += f"\n{fp_summary2}"
