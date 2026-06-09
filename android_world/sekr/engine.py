@@ -20,6 +20,14 @@ class SEKREngine:
                 data = json.load(f)
                 self.kb = data.get("knowledge_base", [])
 
+        # Load global evolution rules
+        rules_path = os.path.join(os.path.dirname(self.kb_path), 'evolution_rules.md')
+        if os.path.exists(rules_path):
+            with open(rules_path, 'r') as f:
+                self.global_rules = f.read()
+        else:
+            self.global_rules = ""
+
     def retrieve(self, history_text: str, goal_text: str) -> str:
         """
         Retrieve relevant knowledge based on keywords in history and goal.

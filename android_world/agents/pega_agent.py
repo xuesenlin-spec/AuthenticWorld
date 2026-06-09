@@ -453,6 +453,11 @@ class PegaAgent(m3a.M3A):
         sekr_guidance, sekr_entries = self.sekr_engine.retrieve_with_raw_text(recent_history, goal)
         action_prompt += sekr_guidance
 
+        # Inject SEKR global rules (always injected as system-level constraints)
+        if self.sekr_engine.global_rules:
+            action_prompt += "\n\n--- SEKR Global Rules (MUST ALWAYS FOLLOW) ---\n"
+            action_prompt += self.sekr_engine.global_rules
+
         # Inject goal-aware memory instruction (prompt to record new facts)
         action_prompt += GOAL_AWARE_MEMORY_PROMPT.format(goal=goal)
 
@@ -585,6 +590,10 @@ class PegaAgent(m3a.M3A):
                     " ".join(history_summaries[-3:]), goal
                 )
                 action_prompt += sekr_guidance
+                # Re-inject global rules in fast-path re-prompt
+                if self.sekr_engine.global_rules:
+                    action_prompt += "\n\n--- SEKR Global Rules (MUST ALWAYS FOLLOW) ---\n"
+                    action_prompt += self.sekr_engine.global_rules
                 action_prompt += GOAL_AWARE_MEMORY_PROMPT.format(goal=goal)
                 # Use SEKR-aware Feynman prompt if rules are active
                 if sekr_entries:
