@@ -165,6 +165,14 @@ ACTION_SELECTION_PROMPT_TEMPLATE = (
     + '\nNow output an action from the above list in the correct JSON format,'
     ' following the reason why you do that. Your answer should look like:\n'
     'Reason: ...\nAction: {{"action_type":...}}\n\n'
+    'For deterministic operations (e.g., open_app + wait, long_press + click '
+    '"Select All", input_text + click save), you MAY output TWO consecutive '
+    'actions in a single response to speed up execution. Format:\n'
+    'Reason: ...\nAction 1: {{"action_type":...}}\nAction 2: {{"action_type":...}}\n\n'
+    'If you output two actions, the system will execute them sequentially with a '
+    '3-second interval. Do NOT chain actions that depend on intermediate screen '
+    'state changes (e.g., do NOT chain two clicks where the second target only '
+    'appears after the first click).\n\n'
     'Your Answer:\n'
 )
 

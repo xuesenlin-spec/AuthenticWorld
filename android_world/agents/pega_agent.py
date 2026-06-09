@@ -521,6 +521,15 @@ class PegaAgent(m3a.M3A):
         print("Action: " + action)
         step_data["action_reason"] = reason
 
+        # --- Check for chained actions (Action 1 + Action 2) ---
+        action2_match = re.search(
+            r'Action\s*2:\s*(\{.*\})', action_output, re.DOTALL
+        )
+        second_action_json = action2_match.group(1).strip() if action2_match else None
+        if second_action_json:
+            print(f"[CHAIN ACTION] Second action detected: {second_action_json}")
+            step_data["chain_action_2"] = second_action_json
+
         # --- Parse action and handle fast_path BEFORE creating JSONAction ---
         try:
             action_dict = agent_utils.extract_json(action)
@@ -665,16 +674,37 @@ class PegaAgent(m3a.M3A):
             self.history.append(step_data)
             return base_agent.AgentInteractionResult(False, step_data)
 
-        # --- Check deferred fast_path: dialog appeared after action? ---
-        time.sleep(self.wait_after_action_seconds)
-        state = self.env.get_state(wait_to_stabilize=False)
-        fp_summary = self._check_and_execute_deferred_fast_path(
-            state.ui_elements, step_data, logical_screen_size,
-        )
-        if fp_summary:
-            print(f"[FAST-PATH deferred] {fp_summary}")
-            # Re-get state after fast_path
-            state = self.env.get_state(wait_to_stabilize=False)
+        # --- Execute second chained action if present ---
+        if second_action_json:
+            time.sleep(3.0)  # 3-second interval between chained actions
+            print("[CHAIN ACTION] Executing second action after 3s delay...")
+            try:
+                action2_dict = agent_utils.extract_json(second_action_json)
+                action2 = json_action.JSONAction(**action2_dict)
+                ok2, target_desc2 = self._execute_action_and_record(
+                    action2, state.ui_elements, step_data, logical_screen_size
+                )
+                if ok2:
+                    # Re-get state after second action
+                    time.sleep(self.wait_after_action_seconds)
+                    state = self.env.get_state(wait_to_stabilize=False)
+                    fp_summary2 = self._check_and_execute_deferred_fast_path(
+                        state.ui_elements, step_data, logical_screen_size,
+                    )
+                    if fp_summary2:
+                        print(f"[FAST-PATH deferred] {fp_summary2}")
+                    summary = f"Action 1: {action}. Action 2: {second_action_json}. Reason: {reason}"
+                    if fp_summary2:
+                        summary += f"\n{fp_summary2}"
+                else:
+                    summary = f"Action 1: {action}. Action 2 FAILED: {second_action_json}. Reason: {reason}"
+            except Exception as e:
+                print(f"[CHAIN ACTION] Failed to parse/execute second action: {e}")
+                summary = f"Action: {action}. Action 2 parse error. Reason: {reason}"
+        else:
+            summary = f"Action: {action}. Reason: {reason}"
+            if fp_summary:
+                summary += f"\n{fp_summary}"
 
         after_ui_elements = state.ui_elements
         after_ui_elements_list = m3a._generate_ui_elements_description_list(
@@ -698,9 +728,6 @@ class PegaAgent(m3a.M3A):
         m3a_utils.add_screenshot_label(after_screenshot, "after")
         step_data["after_screenshot_with_som"] = after_screenshot.copy()
 
-        summary = f"Action: {action}. Reason: {reason}"
-        if fp_summary:
-            summary += f"\n{fp_summary}"
         step_data["summary_prompt"] = None
         step_data["summary"] = summary
         step_data["summary_raw_response"] = None
