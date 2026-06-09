@@ -27,6 +27,7 @@ from android_world.env import adb_utils
 from android_world.env import interface
 from android_world.env import json_action
 from android_world.env import representation_utils
+from android_world.sekr.engine import SEKREngine
 
 # ---------------------------------------------------------------------------
 # Loop Detection
@@ -200,6 +201,24 @@ FEYNMAN_VERIFY_PROMPT = (
     "explanation.\n"
 )
 
+FEYNMAN_VERIFY_WITH_SEKR_PROMPT = (
+    "\n\n--- Feynman Self-Check ---\n"
+    "Before finalizing your action, explain simply (in one sentence):\n"
+    "1. What exactly is at the index you selected? (e.g., 'a Button labeled "
+    "'Submit'', 'a text field showing the number 5')\n"
+    "2. Does interacting with this element achieve your goal? Why?\n"
+    "3. If you are unsure or it doesn't match, what should you click instead?\n"
+    "4. **SEKR Compliance Check**: Review the SEKR Knowledge Base rules above. "
+    "Does your current action comply with each applicable rule? For every rule, "
+    "confirm explicitly: '[OK] Rule: <rule summary> - Complied' or "
+    "'[FAIL] Rule: <rule summary> - NOT followed, need to adjust action.'\n"
+    "   - If any rule shows [FAIL], you MUST adjust your action before proceeding.\n"
+    "If the selected index is correct AND all SEKR rules are complied, "
+    "proceed with your Action as usual.\n"
+    "If NOT, output 'Corrected Action' with the right JSON after your "
+    "explanation.\n"
+)
+
 
 class WorkingMemory:
     """Stores facts extracted by the LLM during task execution."""
@@ -244,6 +263,8 @@ class PegaAgent(m3a.M3A):
         self.deferred_fast_path = None  # {"button_text": str} or None
         # Goal-aware working memory
         self.working_memory = WorkingMemory()
+        # SEKR Engine (Knowledge Infusion)
+        self.sekr_engine = SEKREngine()
 
     def reset(self, go_home_on_reset: bool = False):
         super().reset(go_home_on_reset)
@@ -427,11 +448,20 @@ class PegaAgent(m3a.M3A):
         # Inject working memory context (facts from previous steps)
         action_prompt += self._format_working_memory_context()
 
+        # Inject SEKR knowledge (Knowledge-Infused Reasoning)
+        recent_history = " ".join(history_summaries[-3:]) if history_summaries else ""
+        sekr_guidance, sekr_entries = self.sekr_engine.retrieve_with_raw_text(recent_history, goal)
+        action_prompt += sekr_guidance
+
         # Inject goal-aware memory instruction (prompt to record new facts)
         action_prompt += GOAL_AWARE_MEMORY_PROMPT.format(goal=goal)
 
-        # Inject Feynman self-verification instruction
-        action_prompt += FEYNMAN_VERIFY_PROMPT
+        # Inject Feynman self-verification instruction (with SEKR compliance if applicable)
+        if sekr_entries:
+            action_prompt += FEYNMAN_VERIFY_WITH_SEKR_PROMPT
+            print(f"[SEKR] {len(sekr_entries)} rule(s) retrieved — SEKR compliance check enabled")
+        else:
+            action_prompt += FEYNMAN_VERIFY_PROMPT
 
         step_data["action_prompt"] = action_prompt
         _t = time.time()
@@ -550,7 +580,17 @@ class PegaAgent(m3a.M3A):
                 )
                 # Inject working memory into fast_path re-prompt too
                 action_prompt += self._format_working_memory_context()
+                # Re-inject SEKR knowledge (was missing in fast-path re-prompt)
+                sekr_guidance, sekr_entries = self.sekr_engine.retrieve_with_raw_text(
+                    " ".join(history_summaries[-3:]), goal
+                )
+                action_prompt += sekr_guidance
                 action_prompt += GOAL_AWARE_MEMORY_PROMPT.format(goal=goal)
+                # Use SEKR-aware Feynman prompt if rules are active
+                if sekr_entries:
+                    action_prompt += FEYNMAN_VERIFY_WITH_SEKR_PROMPT
+                else:
+                    action_prompt += FEYNMAN_VERIFY_PROMPT
                 step_data["action_prompt"] = action_prompt
                 _t = time.time()
                 action_output, is_safe, raw_response = self.llm.predict_mm(

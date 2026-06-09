@@ -15,11 +15,16 @@
 """Utilities for evaluating automation agents."""
 
 import collections
+import contextlib
 import datetime
 import hashlib
+import io
+import json
 import logging
 import os
 import random
+import re
+import sys
 import time
 import traceback
 from typing import Any, Callable, Type, TypeVar
@@ -31,6 +36,7 @@ from android_world import episode_runner
 from android_world.agents import base_agent
 from android_world.env import adb_utils
 from android_world.env import interface
+from android_world.sekr.engine import SEKREngine
 from android_world.task_evals import task_eval
 from android_world.task_evals.miniwob import miniwob_base
 from fuzzywuzzy import process
@@ -220,11 +226,179 @@ def _filter_tasks(
   return subset
 
 
+class _TeeCapture(io.StringIO):
+  """Captures stdout and logging to a buffer while still printing to console."""
+  def __init__(self, target):
+    super().__init__()
+    self.target = target
+  def write(self, s):
+    super().write(s)
+    self.target.write(s)
+  def flush(self):
+    self.target.flush()
+
+@contextlib.contextmanager
+def capture_task_trace():
+  """Context manager to capture full task execution trace."""
+  buffer = _TeeCapture(sys.stdout)
+  old_stdout = sys.stdout
+  sys.stdout = buffer
+
+  root_logger = logging.getLogger()
+  log_handler = logging.StreamHandler(buffer)
+  log_handler.setFormatter(logging.Formatter('[LOG] %(message)s'))
+  root_logger.addHandler(log_handler)
+
+  try:
+    yield buffer
+  finally:
+    sys.stdout = old_stdout
+    root_logger.removeHandler(log_handler)
+
+def _trigger_sekr_evolution(task, trace_text, agent=None):
+  """Automatically generates and saves SEKR knowledge from a failed task trace
+  using LLM-driven analysis."""
+  try:
+    lines = trace_text.split('\n')
+    error_lines = [l for l in lines if 'WARNING' in l or 'ERROR' in l or 'FAILURE' in l or 'not found' in l]
+
+    if not error_lines:
+        error_lines = ["Task execution completed but validation failed (Score < 1.0)."]
+
+    # Dynamic path resolution for knowledge.json
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    kb_path = os.path.join(base_dir, 'sekr', 'knowledge.json')
+
+    # Fallback if running from project root and __file__ logic differs
+    if not os.path.exists(kb_path):
+         kb_path = os.path.join(os.path.dirname(base_dir), 'android_world', 'sekr', 'knowledge.json')
+
+    from android_world.sekr.engine import SEKREngine
+    engine = SEKREngine(kb_path=kb_path)
+
+    # If agent has no LLM interface, skip
+    if agent is None or not hasattr(agent, 'llm') or agent.llm is None:
+        print("\n[SEKR AUTO-EVOLUTION] No LLM available on agent, skipping evolution.\n")
+        return
+
+    # --- Build LLM prompt ---
+    # Extract step summaries from trace (lines like "Summary: ..." or "[FAILURE REASON] ...")
+    step_lines = [l for l in lines if l.startswith('Summary:') or l.startswith('[FAILURE REASON]') or ('Step ' in l and ':' in l and len(l) < 200)]
+    step_summaries = '\n'.join(step_lines[:50]) if step_lines else "(No step summaries captured)"
+
+    error_logs = '\n'.join(error_lines)
+    existing_knowledge = json.dumps(engine.kb, indent=2, ensure_ascii=False) if engine.kb else "(Empty knowledge base)"
+
+    # Load global evolution rules
+    rules_path = os.path.join(os.path.dirname(kb_path), 'evolution_rules.md')
+    if os.path.exists(rules_path):
+        with open(rules_path, 'r') as f:
+            evolution_rules = f.read()
+    else:
+        evolution_rules = "(No evolution rules file found)"
+
+    prompt = (
+        "You are a knowledge evolution engine for a GUI automation agent. "
+        "A task has failed. Analyze the failure and decide whether a new "
+        "SEKR (Self-Evolving Knowledge Representation) rule should be added.\n\n"
+
+        f"## Task Goal\n{task.goal}\n\n"
+
+        f"## Execution Process (action summaries per step)\n{step_summaries}\n\n"
+
+        f"## Error / Warning Logs\n{error_logs}\n\n"
+
+        f"## Existing Knowledge Base (do NOT duplicate existing rules)\n{existing_knowledge}\n\n"
+
+        f"## SEKR Evolution Rules (MUST follow these constraints)\n{evolution_rules}\n\n"
+
+        "## Your Task\n"
+        "1. Analyze the root cause of the task failure.\n"
+        "2. Decide: Should a new SEKR knowledge entry be added to prevent similar future failures?\n"
+        "   - If the knowledge would be a specific answer (e.g., 'the amount is $50'), do NOT add it.\n"
+        "   - If the knowledge is a reusable operational heuristic (e.g., 'In Simple Gallery Pro, "
+        "search is unreliable; try manually browsing DCIM folder'), then it SHOULD be added.\n"
+        "3. Output your decision as valid JSON.\n\n"
+
+        "Output format (must be valid JSON, no markdown wrapping):\n"
+        "{\n"
+        '  "failure_reason": "analysis of why the task failed",\n'
+        '  "needs_new_knowledge": true or false,\n'
+        '  "new_entry": {\n'
+        '    "id": "short_snake_case_identifier",\n'
+        '    "keywords": ["keyword1", "keyword2", "keyword3"],\n'
+        '    "guidance": "the actionable guidance text"\n'
+        "  }\n"
+        "}\n"
+        "If no new knowledge is needed, set needs_new_knowledge to false and new_entry to null."
+    )
+
+    print("\n" + "="*50)
+    print("[SEKR AUTO-EVOLUTION] Sending trace to LLM for analysis...")
+    print("="*50 + "\n")
+
+    # Call LLM (text-only, no images needed)
+    text, is_safe, raw = agent.llm.predict(prompt)
+
+    if not text or text.startswith("Error calling LLM"):
+        print("[SEKR AUTO-EVOLUTION] LLM call failed, skipping evolution.\n")
+        return
+
+    print(f"[SEKR LLM RESPONSE]\n{text}\n")
+
+    # Parse JSON from LLM response (may have extra text around JSON)
+    json_match = re.search(r'\{.*\}', text, re.DOTALL)
+    if not json_match:
+        print("[SEKR AUTO-EVOLUTION] Could not parse JSON from LLM response, skipping.\n")
+        return
+
+    try:
+        result = json.loads(json_match.group(0))
+    except json.JSONDecodeError as e:
+        print(f"[SEKR AUTO-EVOLUTION] Invalid JSON: {e}, skipping.\n")
+        return
+
+    failure_reason = result.get("failure_reason", "Unknown")
+    needs_new = result.get("needs_new_knowledge", False)
+    new_entry = result.get("new_entry")
+
+    print(f"[SEKR ANALYSIS] Failure reason: {failure_reason}")
+    print(f"[SEKR ANALYSIS] Needs new knowledge: {needs_new}")
+
+    if not needs_new or not new_entry:
+        print("[SEKR AUTO-EVOLUTION] LLM determined no new knowledge is needed.\n")
+        return
+
+    # Validate new_entry has required fields
+    if not all(k in new_entry for k in ("id", "keywords", "guidance")):
+        print("[SEKR AUTO-EVOLUTION] New entry missing required fields (id, keywords, guidance), skipping.\n")
+        return
+
+    # Check for duplicate ID
+    existing_ids = [k.get('id') for k in engine.kb]
+    if new_entry['id'] in existing_ids:
+        print(f"\n[SEKR AUTO-EVOLUTION] Rule '{new_entry['id']}' already exists, skipping.\n")
+    else:
+        engine.evolve(new_entry)
+        print("\n" + "="*50)
+        print(f"[SEKR AUTO-EVOLUTION] Successfully learned a new rule!")
+        print(f"Task: {task.name}")
+        print(f"Rule ID: {new_entry['id']}")
+        print(f"Guidance: {new_entry['guidance']}")
+        print("="*50 + "\n")
+
+  except Exception as e:
+    print(f"\n[SEKR ERROR] Failed to evolve: {e}\n")
+    import traceback
+    traceback.print_exc()
+
+
 def _run_task(
     task: TaskEvalType,
     run_episode: Callable[[TaskEvalType], episode_runner.EpisodeResult],
     env: interface.AsyncEnv,
     demo_mode: bool,
+    agent: base_agent.EnvironmentInteractingAgent | None = None,
 ) -> dict[str, Any]:
   """Runs a task.
 
@@ -241,28 +415,32 @@ def _run_task(
     ValueError: If step data was not as expected.
   """
   start = time.time()
-  try:
-    task.initialize_task(env)
-    _log_and_print('Running task %s with goal "%s"', task.name, task.goal)
-    interaction_results = run_episode(task)
-    task_successful = task.is_successful(env)
-  except Exception as e:  # pylint: disable=broad-exception-caught
-    _log_and_print('%s\nSKIPPING %s.', '~' * 80, task.name)
-    logging.exception(
-        'Logging exception and skipping task. Will keep running. Task: %s: %s',
-        task.name,
-        e,
-    )
-    traceback.print_exc()
-    task.tear_down(env)  # Ensure cleanup even on failure
-    return _create_failed_result(
-        task.name, task.goal, traceback.format_exc(), time.time() - start
-    )
-  else:
-    agent_successful = task_successful if interaction_results.done else 0.0
-    if agent_successful <= 0.5:
-        _log_and_print(
-            '[FAILURE REASON] Task: %s | Score: %.2f | Done: %s',
+  task_trace_buffer = None
+
+  with capture_task_trace() as trace_buffer:
+    task_trace_buffer = trace_buffer
+    try:
+      task.initialize_task(env)
+      _log_and_print('Running task %s with goal "%s"', task.name, task.goal)
+      interaction_results = run_episode(task)
+      task_successful = task.is_successful(env)
+    except Exception as e:  # pylint: disable=broad-exception-caught
+      _log_and_print('%s\nSKIPPING %s.', '~' * 80, task.name)
+      logging.exception(
+          'Logging exception and skipping task. Will keep running. Task: %s: %s',
+          task.name,
+          e,
+      )
+      traceback.print_exc()
+      task.tear_down(env)  # Ensure cleanup even on failure
+      return _create_failed_result(
+          task.name, task.goal, traceback.format_exc(), time.time() - start
+      )
+    else:
+      agent_successful = task_successful if interaction_results.done else 0.0
+      if agent_successful <= 0.5:
+          _log_and_print(
+              '[FAILURE REASON] Task: %s | Score: %.2f | Done: %s',
             task.name, task_successful, interaction_results.done,
         )
     _log_and_print(
@@ -291,6 +469,11 @@ def _run_task(
             constants.EpisodeConstants.SEED
         ],
     }
+
+    # Trigger SEKR knowledge evolution on any non-perfect score
+    if agent_successful < 1.0 and task_trace_buffer:
+        _trigger_sekr_evolution(task, task_trace_buffer.getvalue(), agent)
+
     task.tear_down(env)
     return result
 
@@ -407,7 +590,7 @@ def _run_task_suite(
       if agent is not None:
         agent.set_task_info(instance.name, task_counter, total_tasks)
 
-      episode = _run_task(instance, run_episode, env, demo_mode=demo_mode)
+      episode = _run_task(instance, run_episode, env, demo_mode=demo_mode, agent=agent)
       if (
           episode.get(constants.EpisodeConstants.EXCEPTION_INFO) is None
           and check_episode_fn is not None

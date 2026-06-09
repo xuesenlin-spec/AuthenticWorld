@@ -1,0 +1,88 @@
+{
+  "knowledge_base": [
+    {
+      "id": "gallery_folder_navigation",
+      "keywords": [
+        "Simple Gallery Pro",
+        "navigation",
+        "sub-folder",
+        "thumbnail",
+        "find file",
+        "folder"
+      ],
+      "guidance": "In Simple Gallery Pro, if a specific file is not visible in the main thumbnail view, it is likely located inside a sub-folder (e.g., 'DCIM', 'Download', or 'Camera'). You MUST explicitly click on the folder name/icon to navigate into the sub-folder before attempting to locate the file. Do not just scroll the main view."
+    },
+    {
+      "id": "gallery_search_failure",
+      "keywords": [
+        "Simple Gallery Pro",
+        "search",
+        "expenses.jpg",
+        "No items found"
+      ],
+      "guidance": "Tip: In Simple Gallery Pro, the search function often fails to find files. If search returns empty, try manually browsing 'Albums' or 'Folders' (e.g., DCIM, Download)."
+    },
+    {
+      "id": "gallery_view_files",
+      "tags": [
+        "Simple Gallery Pro",
+        "no media files found",
+        "thumbnails"
+      ],
+      "guidance": "Tip: If Simple Gallery Pro shows 'No media files found', click the '+' or 'Add folder' button to select the directory (e.g., Internal Storage/Download) where images are stored."
+    },
+    {
+      "id": "expense_add_manual",
+      "tags": [
+        "Pro Expense",
+        "add expense",
+        "image",
+        "add"
+      ],
+      "guidance": "Tip: To add an expense in Pro Expense, tap the green '+' button. Select 'Image Upload' if needed, extract amount from image, fill fields, and click 'Save'."
+    },
+    {
+      "id": "calendar_sync_dialog",
+      "tags": [
+        "Simple Calendar Pro",
+        "Turn on sync",
+        "No thanks"
+      ],
+      "guidance": "Tip: Simple Calendar Pro often asks to 'Turn on sync' on first launch. Click 'No thanks' or the 'X' to bypass this and continue."
+    },
+    {
+      "id": "expense_missing_fields",
+      "keywords": [
+        "expense",
+        "image",
+        "fields",
+        "note"
+      ],
+      "guidance": "CRITICAL: When adding expenses from an image, ensure ALL fields (Name, Amount, Category, Note) are filled. Missing fields cause validation failure."
+    },
+    {
+      "id": "expense_text_file_field_extraction",
+      "keywords": [
+        "Markor",
+        "text file",
+        "expense entry",
+        "note field",
+        "data parsing",
+        "Pro Expense"
+      ],
+      "guidance": "When logging expenses from a text file (e.g., in Markor), parse the entire transaction line to extract ALL available attributes (Name, Amount, Category, Note, Date). Do not limit extraction to just Name and Amount. Explicitly locate and fill the 'Note' and 'Date' fields in the expense app's entry form if the source text contains them, as missing these fields will cause validation failures or state mismatches."
+    },
+    {
+      "id": "expense_note_parsing_cleanup",
+      "keywords": [
+        "Pro Expense",
+        "Markor",
+        "text file",
+        "note field",
+        "data parsing",
+        "status tags"
+      ],
+      "guidance": "When extracting transaction details from a text file to log in an expense app, carefully distinguish between the actual transaction note and task-specific status tags (e.g., 'Reimbursable', 'Pending', 'Verified'). Only input the core descriptive text into the Note field. Including status metadata or task instructions in the note field often causes state mismatches or validation failures during evaluation."
+    }
+  ]
+}
