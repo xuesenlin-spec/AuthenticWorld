@@ -717,6 +717,9 @@ class PegaAgent(m3a.M3A):
                     summary = f"Action 1: {action}. Action 2: {second_action_json}. Reason: {reason}"
                     if fp_summary2:
                         summary += f"\n{fp_summary2}"
+                    # Wait 3 seconds after second action before proceeding to next step
+                    time.sleep(3.0)
+                    print("[CHAIN ACTION] Second action executed, waiting 3s before next step...")
                 else:
                     summary = f"Action 1: {action}. Action 2 FAILED: {second_action_json}. Reason: {reason}"
             except Exception as e:
