@@ -180,13 +180,13 @@ def _get_agent(
         agent = t3a.T3A(env, infer.GeminiGcpWrapper(model_name="gemini-1.5-pro-latest"))
     # GPT.
     elif _AGENT_NAME.value == "t3a_gpt4":
-        agent = t3a.T3A(env, infer.Gpt4Wrapper("qwen3.6-plus"))
+        agent = t3a.T3A(env, infer.Gpt4Wrapper("qwen3.7-plus"))
     elif _AGENT_NAME.value == "m3a_gpt4v":
-        agent = m3a.M3A(env, infer.Gpt4Wrapper("qwen3.6-plus"))
+        agent = m3a.M3A(env, infer.Gpt4Wrapper("qwen3.7-plus"))
     # PegaAgent.
     elif _AGENT_NAME.value == "pega_gpt4":
         agent = pega_agent.PegaAgent(
-            env, infer.Gpt4Wrapper("qwen3.6-plus", max_retry=5)
+            env, infer.Gpt4Wrapper("qwen3.7-plus", max_retry=5)
         )
     # SeeAct.
     elif _AGENT_NAME.value == "seeact":
