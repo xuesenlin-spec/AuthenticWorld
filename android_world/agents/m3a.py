@@ -75,6 +75,10 @@ PROMPT_PREFIX = (
     ' specific UI element, leave it empty when scroll the whole screen:'
     ' `{{"action_type": "scroll", "direction": <up, down, left, right>,'
     ' "index": <optional_target_index>}}`\n'
+    '- Swipe from one position to another. Use direction for screen-level swipes:'
+    ' `{{"action_type": "swipe", "direction": <up, down, left, right>}}`.'
+    ' Or use custom coordinates for dragging UI elements (e.g., sliders):'
+    ' `{{"action_type": "swipe", "start_x": <x1>, "start_y": <y1>, "end_x": <x2>, "end_y": <y2>}}`\n'
     '- Open an app (nothing will happen if the app is not'
     ' installed): `{{"action_type": "open_app", "app_name": <name>}}`\n'
     '- Wait for the screen to update: `{{"action_type": "wait"}}`\n\n'
@@ -256,6 +260,13 @@ def _generate_ui_element_description(
   element_description += (
       f'"is_checked": {"True" if ui_element.is_checked else "False"}, '
   )
+  # Include bbox for coordinate-based click actions
+  if ui_element.bbox_pixels is not None:
+    bbox = ui_element.bbox_pixels
+    element_description += (
+        f'"bbox": [x_min={int(bbox.x_min)}, x_max={int(bbox.x_max)}, '
+        f'y_min={int(bbox.y_min)}, y_max={int(bbox.y_max)}], '
+    )
   return element_description[:-2] + '}'
 
 

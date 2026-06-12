@@ -169,27 +169,41 @@ def execute_adb_action(
 
   elif action.action_type == 'swipe':  # Inverse of scroll.
     screen_width, screen_height = screen_size
-    mid_x, mid_y = 0.5 * screen_width, 0.5 * screen_height
-    direction = action.direction
-    if direction == 'down':
-      start_x, start_y = mid_x, 0
-      end_x, end_y = mid_x, screen_height
-    elif direction == 'up':
-      start_x, start_y = mid_x, screen_height
-      end_x, end_y = mid_x, 0
-    elif direction == 'left':
-      start_x, start_y = 0, mid_y
-      end_x, end_y = screen_width, mid_y
-    elif direction == 'right':
-      start_x, start_y = screen_width, mid_y
-      end_x, end_y = 0, mid_y
+
+    # Check if custom coordinates are provided
+    if (action.start_x is not None and action.start_y is not None and
+        action.end_x is not None and action.end_y is not None):
+      # Custom coordinate swipe - for dragging sliders, etc.
+      command = adb_utils.generate_swipe_command(
+          int(action.start_x), int(action.start_y),
+          int(action.end_x), int(action.end_y), 500
+      )
+      adb_utils.issue_generic_request(command, env)
+    elif action.direction:
+      # Direction-based swipe (original behavior)
+      mid_x, mid_y = 0.5 * screen_width, 0.5 * screen_height
+      direction = action.direction
+      if direction == 'down':
+        start_x, start_y = mid_x, 0
+        end_x, end_y = mid_x, screen_height
+      elif direction == 'up':
+        start_x, start_y = mid_x, screen_height
+        end_x, end_y = mid_x, 0
+      elif direction == 'left':
+        start_x, start_y = 0, mid_y
+        end_x, end_y = screen_width, mid_y
+      elif direction == 'right':
+        start_x, start_y = screen_width, mid_y
+        end_x, end_y = 0, mid_y
+      else:
+        print('Invalid direction')
+        return
+      command = adb_utils.generate_swipe_command(
+          int(start_x), int(start_y), int(end_x), int(end_y), 500
+      )
+      adb_utils.issue_generic_request(command, env)
     else:
-      print('Invalid direction')
-      return
-    command = adb_utils.generate_swipe_command(
-        int(start_x), int(start_y), int(end_x), int(end_y), 500
-    )
-    adb_utils.issue_generic_request(command, env)
+      print('Swipe action requires either direction or start/end coordinates')
 
   elif action.action_type == 'open_app':
     app_name = action.app_name

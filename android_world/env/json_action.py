@@ -60,6 +60,10 @@ ACTION_TYPE = 'action_type'
 INDEX = 'index'
 X = 'x'
 Y = 'y'
+START_X = 'start_x'
+START_Y = 'start_y'
+END_X = 'end_x'
+END_Y = 'end_y'
 TEXT = 'text'
 DIRECTION = 'direction'
 APP_NAME = 'app_name'
@@ -70,6 +74,10 @@ ACTION_KEYS = [
     INDEX,
     X,
     Y,
+    START_X,
+    START_Y,
+    END_X,
+    END_Y,
     TEXT,
     DIRECTION,
     APP_NAME,
@@ -107,6 +115,10 @@ class JSONAction:
   index: Optional[str | int] = None
   x: Optional[int] = None
   y: Optional[int] = None
+  start_x: Optional[int] = None
+  start_y: Optional[int] = None
+  end_x: Optional[int] = None
+  end_y: Optional[int] = None
   text: Optional[str] = None
   direction: Optional[str] = None
   goal_status: Optional[str] = None
